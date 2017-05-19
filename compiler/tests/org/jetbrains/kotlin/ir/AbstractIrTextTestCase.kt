@@ -29,6 +29,7 @@ import org.jetbrains.kotlin.ir.symbols.IrSymbol
 import org.jetbrains.kotlin.ir.util.*
 import org.jetbrains.kotlin.ir.visitors.IrElementVisitorVoid
 import org.jetbrains.kotlin.ir.visitors.acceptChildrenVoid
+import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.test.KotlinTestUtils
 import org.jetbrains.kotlin.utils.rethrow
 import java.io.File
@@ -60,6 +61,8 @@ abstract class AbstractIrTextTestCase : AbstractIrGeneratorTestCase() {
     }
 
     protected fun doTestIrFileAgainstExpectations(dir: File, testFile: TestFile, irFile: IrFile) {
+        if (testFile.isExternalFile()) return
+
         val expectations = parseExpectations(dir, testFile)
         val irFileDump = irFile.dump()
 
@@ -139,18 +142,18 @@ abstract class AbstractIrTextTestCase : AbstractIrGeneratorTestCase() {
 
             checkTypeParameters(functionDescriptor, declaration, functionDescriptor.typeParameters)
 
-            declaration.dispatchReceiverParameter?.descriptor.let { dispatchReceiverDescriptor ->
-                if (dispatchReceiverDescriptor != functionDescriptor.dispatchReceiverParameter) {
-                    error("$functionDescriptor: Dispatch receiver parameter mismatch: " +
-                          "$dispatchReceiverDescriptor != ${functionDescriptor.dispatchReceiverParameter}")
-                }
+            val expectedDispatchReceiver = functionDescriptor.dispatchReceiverParameter
+            val actualDispatchReceiver = declaration.dispatchReceiverParameter?.descriptor
+            if (expectedDispatchReceiver != actualDispatchReceiver) {
+                error("$functionDescriptor: Dispatch receiver parameter mismatch: " +
+                      "expected $expectedDispatchReceiver, actual $actualDispatchReceiver")
             }
 
-            declaration.extensionReceiverParameter?.descriptor.let { extensionReceiverDescriptor ->
-                if (extensionReceiverDescriptor != functionDescriptor.extensionReceiverParameter) {
-                    error("$functionDescriptor: Extension receiver parameter mismatch: " +
-                          "$extensionReceiverDescriptor != ${functionDescriptor.extensionReceiverParameter}")
-                }
+            val expectedExtensionReceiver  = functionDescriptor.extensionReceiverParameter
+            val actualExtensionReceiver = declaration.extensionReceiverParameter?.descriptor
+            if (expectedExtensionReceiver != actualExtensionReceiver) {
+                error("$functionDescriptor: Extension receiver parameter mismatch: " +
+                      "expected $expectedExtensionReceiver, actual $actualExtensionReceiver")
             }
 
             val declaredValueParameters = declaration.valueParameters.map { it.descriptor }
@@ -234,8 +237,16 @@ abstract class AbstractIrTextTestCase : AbstractIrGeneratorTestCase() {
 
         private val DUMP_DEPENDENCIES_PATTERN = Regex("""// !DUMP_DEPENDENCIES""")
 
+        private val EXTERNAL_FILE_PATTERN = Regex("""// EXTERNAL_FILE""")
+
         internal fun shouldDumpDependencies(wholeFile: File): Boolean =
                 DUMP_DEPENDENCIES_PATTERN.containsMatchIn(wholeFile.readText())
+
+        internal fun TestFile.isExternalFile() =
+                EXTERNAL_FILE_PATTERN.containsMatchIn(content)
+
+        internal fun KtFile.isExternalFile() =
+                EXTERNAL_FILE_PATTERN.containsMatchIn(text)
 
         internal fun parseExpectations(dir: File, testFile: TestFile): Expectations {
             val regexps = ArrayList<RegexpInText>()

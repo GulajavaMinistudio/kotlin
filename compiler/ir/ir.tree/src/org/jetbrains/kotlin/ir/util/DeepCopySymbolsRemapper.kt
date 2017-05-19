@@ -24,7 +24,9 @@ import org.jetbrains.kotlin.ir.symbols.impl.*
 import org.jetbrains.kotlin.ir.visitors.IrElementVisitorVoid
 import org.jetbrains.kotlin.ir.visitors.acceptChildrenVoid
 
-class DeepCopySymbolsRemapper : IrElementVisitorVoid {
+class DeepCopySymbolsRemapper(
+        val descriptorsRemapper: DescriptorsRemapper = DescriptorsRemapper.DEFAULT
+) : IrElementVisitorVoid, SymbolRemapper {
     private val classes = hashMapOf<IrClassSymbol, IrClassSymbol>()
     private val constructors = hashMapOf<IrConstructorSymbol, IrConstructorSymbol>()
     private val enumEntries = hashMapOf<IrEnumEntrySymbol, IrEnumEntrySymbol>()
@@ -47,52 +49,72 @@ class DeepCopySymbolsRemapper : IrElementVisitorVoid {
     }
 
     override fun visitClass(declaration: IrClass) {
-        remapSymbol(classes, declaration) { IrClassSymbolImpl(it.descriptor) }
+        remapSymbol(classes, declaration) {
+            IrClassSymbolImpl(descriptorsRemapper.remapDeclaredClass(it.descriptor))
+        }
         declaration.acceptChildrenVoid(this)
     }
 
     override fun visitConstructor(declaration: IrConstructor) {
-        remapSymbol(constructors, declaration) { IrConstructorSymbolImpl(it.descriptor) }
+        remapSymbol(constructors, declaration) {
+            IrConstructorSymbolImpl(descriptorsRemapper.remapDeclaredConstructor(it.descriptor))
+        }
         declaration.acceptChildrenVoid(this)
     }
 
     override fun visitEnumEntry(declaration: IrEnumEntry) {
-        remapSymbol(enumEntries, declaration) { IrEnumEntrySymbolImpl(it.descriptor) }
+        remapSymbol(enumEntries, declaration) {
+            IrEnumEntrySymbolImpl(descriptorsRemapper.remapDeclaredEnumEntry(it.descriptor))
+        }
         declaration.acceptChildrenVoid(this)
     }
 
     override fun visitExternalPackageFragment(declaration: IrExternalPackageFragment) {
-        remapSymbol(externalPackageFragments, declaration) { IrExternalPackageFragmentSymbolImpl(it.descriptor) }
+        remapSymbol(externalPackageFragments, declaration) {
+            IrExternalPackageFragmentSymbolImpl(descriptorsRemapper.remapDeclaredExternalPackageFragment(it.descriptor))
+        }
         declaration.acceptChildrenVoid(this)
     }
 
     override fun visitField(declaration: IrField) {
-        remapSymbol(fields, declaration) { IrFieldSymbolImpl(it.descriptor) }
+        remapSymbol(fields, declaration) {
+            IrFieldSymbolImpl(descriptorsRemapper.remapDeclaredField(it.descriptor))
+        }
         declaration.acceptChildrenVoid(this)
     }
 
     override fun visitFile(declaration: IrFile) {
-        remapSymbol(files, declaration) { IrFileSymbolImpl(it.descriptor) }
+        remapSymbol(files, declaration) {
+            IrFileSymbolImpl(descriptorsRemapper.remapDeclaredFilePackageFragment(it.descriptor))
+        }
         declaration.acceptChildrenVoid(this)
     }
 
     override fun visitSimpleFunction(declaration: IrSimpleFunction) {
-        remapSymbol(functions, declaration) { IrSimpleFunctionSymbolImpl(it.descriptor) }
+        remapSymbol(functions, declaration) {
+            IrSimpleFunctionSymbolImpl(descriptorsRemapper.remapDeclaredSimpleFunction(it.descriptor))
+        }
         declaration.acceptChildrenVoid(this)
     }
 
     override fun visitTypeParameter(declaration: IrTypeParameter) {
-        remapSymbol(typeParameters, declaration) { IrTypeParameterSymbolImpl(it.descriptor) }
+        remapSymbol(typeParameters, declaration) {
+            IrTypeParameterSymbolImpl(descriptorsRemapper.remapDeclaredTypeParameter(it.descriptor))
+        }
         declaration.acceptChildrenVoid(this)
     }
 
     override fun visitValueParameter(declaration: IrValueParameter) {
-        remapSymbol(valueParameters, declaration) { IrValueParameterSymbolImpl(it.descriptor) }
+        remapSymbol(valueParameters, declaration) {
+            IrValueParameterSymbolImpl(descriptorsRemapper.remapDeclaredValueParameter(it.descriptor))
+        }
         declaration.acceptChildrenVoid(this)
     }
 
     override fun visitVariable(declaration: IrVariable) {
-        remapSymbol(variables, declaration) { IrVariableSymbolImpl(it.descriptor) }
+        remapSymbol(variables, declaration) {
+            IrVariableSymbolImpl(descriptorsRemapper.remapDeclaredVariable(it.descriptor))
+        }
         declaration.acceptChildrenVoid(this)
     }
 
@@ -104,39 +126,39 @@ class DeepCopySymbolsRemapper : IrElementVisitorVoid {
     private fun <T : IrSymbol> Map<T, T>.getReferenced(symbol: T) =
             getOrElse(symbol) { symbol }
 
-    fun getDeclaredClass(symbol: IrClassSymbol): IrClassSymbol = classes.getDeclared(symbol)
-    fun getDeclaredFunction(symbol: IrSimpleFunctionSymbol): IrSimpleFunctionSymbol = functions.getDeclared(symbol)
-    fun getDeclaredField(symbol: IrFieldSymbol): IrFieldSymbol = fields.getDeclared(symbol)
-    fun getDeclaredFile(symbol: IrFileSymbol): IrFileSymbol = files.getDeclared(symbol)
-    fun getDeclaredConstructor(symbol: IrConstructorSymbol): IrConstructorSymbol = constructors.getDeclared(symbol)
-    fun getDeclaredEnumEntry(symbol: IrEnumEntrySymbol): IrEnumEntrySymbol = enumEntries.getDeclared(symbol)
-    fun getDeclaredExternalPackageFragment(symbol: IrExternalPackageFragmentSymbol): IrExternalPackageFragmentSymbol = externalPackageFragments.getDeclared(symbol)
-    fun getDeclaredVariable(symbol: IrVariableSymbol): IrVariableSymbol = variables.getDeclared(symbol)
-    fun getDeclaredTypeParameter(symbol: IrTypeParameterSymbol): IrTypeParameterSymbol = typeParameters.getDeclared(symbol)
-    fun getDeclaredValueParameter(symbol: IrValueParameterSymbol): IrValueParameterSymbol = valueParameters.getDeclared(symbol)
+    override fun getDeclaredClass(symbol: IrClassSymbol): IrClassSymbol = classes.getDeclared(symbol)
+    override fun getDeclaredFunction(symbol: IrSimpleFunctionSymbol): IrSimpleFunctionSymbol = functions.getDeclared(symbol)
+    override fun getDeclaredField(symbol: IrFieldSymbol): IrFieldSymbol = fields.getDeclared(symbol)
+    override fun getDeclaredFile(symbol: IrFileSymbol): IrFileSymbol = files.getDeclared(symbol)
+    override fun getDeclaredConstructor(symbol: IrConstructorSymbol): IrConstructorSymbol = constructors.getDeclared(symbol)
+    override fun getDeclaredEnumEntry(symbol: IrEnumEntrySymbol): IrEnumEntrySymbol = enumEntries.getDeclared(symbol)
+    override fun getDeclaredExternalPackageFragment(symbol: IrExternalPackageFragmentSymbol): IrExternalPackageFragmentSymbol = externalPackageFragments.getDeclared(symbol)
+    override fun getDeclaredVariable(symbol: IrVariableSymbol): IrVariableSymbol = variables.getDeclared(symbol)
+    override fun getDeclaredTypeParameter(symbol: IrTypeParameterSymbol): IrTypeParameterSymbol = typeParameters.getDeclared(symbol)
+    override fun getDeclaredValueParameter(symbol: IrValueParameterSymbol): IrValueParameterSymbol = valueParameters.getDeclared(symbol)
 
-    fun getReferencedClass(symbol: IrClassSymbol): IrClassSymbol = classes.getReferenced(symbol)
-    fun getReferencedClassOrNull(symbol: IrClassSymbol?): IrClassSymbol? = symbol?.let { classes.getReferenced(it) }
-    fun getReferencedEnumEntry(symbol: IrEnumEntrySymbol): IrEnumEntrySymbol = enumEntries.getReferenced(symbol)
-    fun getReferencedVariable(symbol: IrVariableSymbol): IrVariableSymbol = variables.getReferenced(symbol)
-    fun getReferencedField(symbol: IrFieldSymbol): IrFieldSymbol = fields.getReferenced(symbol)
-    fun getReferencedConstructor(symbol: IrConstructorSymbol): IrConstructorSymbol = constructors.getReferenced(symbol)
+    override fun getReferencedClass(symbol: IrClassSymbol): IrClassSymbol = classes.getReferenced(symbol)
+    override fun getReferencedClassOrNull(symbol: IrClassSymbol?): IrClassSymbol? = symbol?.let { classes.getReferenced(it) }
+    override fun getReferencedEnumEntry(symbol: IrEnumEntrySymbol): IrEnumEntrySymbol = enumEntries.getReferenced(symbol)
+    override fun getReferencedVariable(symbol: IrVariableSymbol): IrVariableSymbol = variables.getReferenced(symbol)
+    override fun getReferencedField(symbol: IrFieldSymbol): IrFieldSymbol = fields.getReferenced(symbol)
+    override fun getReferencedConstructor(symbol: IrConstructorSymbol): IrConstructorSymbol = constructors.getReferenced(symbol)
 
-    fun getReferencedValue(symbol: IrValueSymbol): IrValueSymbol =
+    override fun getReferencedValue(symbol: IrValueSymbol): IrValueSymbol =
             when (symbol) {
                 is IrValueParameterSymbol -> valueParameters.getReferenced(symbol)
                 is IrVariableSymbol -> variables.getReferenced(symbol)
                 else -> throw IllegalArgumentException("Unexpected symbol $symbol ${symbol.descriptor}")
             }
 
-    fun getReferencedFunction(symbol: IrFunctionSymbol): IrFunctionSymbol =
+    override fun getReferencedFunction(symbol: IrFunctionSymbol): IrFunctionSymbol =
             when (symbol) {
                 is IrSimpleFunctionSymbol -> functions.getReferenced(symbol)
                 is IrConstructorSymbol -> constructors.getReferenced(symbol)
                 else -> throw IllegalArgumentException("Unexpected symbol $symbol ${symbol.descriptor}")
             }
 
-    fun getReferencedClassifier(symbol: IrClassifierSymbol): IrClassifierSymbol =
+    override fun getReferencedClassifier(symbol: IrClassifierSymbol): IrClassifierSymbol =
             when (symbol) {
                 is IrClassSymbol -> classes.getReferenced(symbol)
                 is IrTypeParameterSymbol -> typeParameters.getReferenced(symbol)
