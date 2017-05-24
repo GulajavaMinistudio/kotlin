@@ -107,6 +107,8 @@ class CompileServiceImpl(
         val onShutdown: () -> Unit
 ) : CompileService {
 
+    private val log by lazy { Logger.getLogger("compiler") }
+
     init {
         System.setProperty(KOTLIN_COMPILER_ENVIRONMENT_KEEPALIVE_PROPERTY, "true")
     }
@@ -184,8 +186,6 @@ class CompileServiceImpl(
     @Volatile private var _lastUsedSeconds = nowSeconds()
     val lastUsedSeconds: Long get() = if (rwlock.isWriteLocked || rwlock.readLockCount - rwlock.readHoldCount > 0) nowSeconds() else _lastUsedSeconds
 
-    private val log by lazy { Logger.getLogger("compiler") }
-
     private val rwlock = ReentrantReadWriteLock()
 
     private var runFile: File
@@ -212,12 +212,15 @@ class CompileServiceImpl(
     }
 
     override fun getDaemonJVMOptions(): CompileService.CallResult<DaemonJVMOptions> = ifAlive {
+        log.info("getDaemonJVMOptions: $daemonJVMOptions")// + daemonJVMOptions.mappers.flatMap { it.toArgs("-") })
+
         CompileService.CallResult.Good(daemonJVMOptions)
     }
 
     override fun registerClient(aliveFlagPath: String?): CompileService.CallResult<Nothing> = ifAlive {
         synchronized(state.clientProxies) {
             state.clientProxies.add(ClientOrSessionProxy(aliveFlagPath))
+            log.info("Registered a client alive file: $aliveFlagPath")
         }
         CompileService.CallResult.Ok()
     }
@@ -232,7 +235,7 @@ class CompileServiceImpl(
     override fun leaseCompileSession(aliveFlagPath: String?): CompileService.CallResult<Int> = ifAlive(minAliveness = Aliveness.Alive) {
         CompileService.CallResult.Good(
                 state.sessions.leaseSession(ClientOrSessionProxy<Any>(aliveFlagPath)).apply {
-                    log.info("leased a new session $this, client alive file: $aliveFlagPath")
+                    log.info("leased a new session $this, session alive file: $aliveFlagPath")
                 })
     }
 
@@ -335,6 +338,7 @@ class CompileServiceImpl(
         val daemonReporter = DaemonMessageReporter(servicesFacade, compilationOptions)
         val compilerMode = compilationOptions.compilerMode
         val targetPlatform = compilationOptions.targetPlatform
+        log.info("Starting compilation with args: " + compilerArguments.joinToString(" "))
         val k2PlatformArgs = try {
             when (targetPlatform) {
                 CompileService.TargetPlatform.JVM -> K2JVMCompilerArguments().apply { K2JVMCompiler().parseArguments(compilerArguments, this) }
@@ -709,6 +713,10 @@ class CompileServiceImpl(
 
     private fun shutdownImpl() {
         log.info("Shutdown started")
+        fun Long.mb() = this / (1024 * 1024)
+        with (Runtime.getRuntime()) {
+            log.info("Memory stats: total: ${totalMemory().mb()}mb, free: ${freeMemory().mb()}mb, max: ${maxMemory().mb()}mb")
+        }
         state.alive.set(Aliveness.Dying.ordinal)
 
         UnicastRemoteObject.unexportObject(this, true)
@@ -869,9 +877,18 @@ class CompileServiceImpl(
                 ifAliveChecksImpl(minAliveness, ignoreCompilerChanged, body)
             }
 
-    inline private fun<R> ifAliveChecksImpl(minAliveness: Aliveness = Aliveness.Alive, ignoreCompilerChanged: Boolean = false, body: () -> CompileService.CallResult<R>): CompileService.CallResult<R> =
-        when {
-            state.alive.get() < minAliveness.ordinal -> CompileService.CallResult.Dying()
+    inline private fun<R> ifAliveChecksImpl(minAliveness: Aliveness = Aliveness.Alive, ignoreCompilerChanged: Boolean = false, body: () -> CompileService.CallResult<R>): CompileService.CallResult<R> {
+        val curState = state.alive.get()
+        return when {
+            curState < minAliveness.ordinal -> {
+                log.info("Cannot perform operation, requested state: ${minAliveness.name} > actual: ${try {
+                    Aliveness.values()[curState].name
+                }
+                catch (_: Throwable) {
+                    "invalid($curState)"
+                }}")
+                CompileService.CallResult.Dying()
+            }
             !ignoreCompilerChanged && classpathWatcher.isChanged -> {
                 log.info("Compiler changed, scheduling shutdown")
                 shutdownWithDelay()
@@ -887,6 +904,7 @@ class CompileServiceImpl(
                 }
             }
         }
+    }
 
     private inline fun<R> withValidClientOrSessionProxy(sessionId: Int,
                                                         body: (ClientOrSessionProxy<Any>?) -> CompileService.CallResult<R>
