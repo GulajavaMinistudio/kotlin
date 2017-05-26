@@ -7363,6 +7363,12 @@ public class DiagnosticsTestGenerated extends AbstractDiagnosticsTest {
                 doTest(fileName);
             }
 
+            @TestMetadata("extendingEnumDirectly.kt")
+            public void testExtendingEnumDirectly() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/enum/extendingEnumDirectly.kt");
+                doTest(fileName);
+            }
+
             @TestMetadata("extensionNamedAsEnumEntry.kt")
             public void testExtensionNamedAsEnumEntry() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/enum/extensionNamedAsEnumEntry.kt");
@@ -15832,6 +15838,12 @@ public class DiagnosticsTestGenerated extends AbstractDiagnosticsTest {
                 KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/diagnostics/tests/properties"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.ANY, true);
             }
 
+            @TestMetadata("extensionPropertyMustHaveAccessorsOrBeAbstract.kt")
+            public void testExtensionPropertyMustHaveAccessorsOrBeAbstract() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/properties/extensionPropertyMustHaveAccessorsOrBeAbstract.kt");
+                doTest(fileName);
+            }
+
             @TestMetadata("compiler/testData/diagnostics/tests/properties/inferenceFromGetters")
             @TestDataPath("$PROJECT_ROOT")
             @RunWith(JUnit3RunnerWithInners.class)
@@ -16084,6 +16096,12 @@ public class DiagnosticsTestGenerated extends AbstractDiagnosticsTest {
             @TestMetadata("ConflictingExtensionProperties.kt")
             public void testConflictingExtensionProperties() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/redeclarations/ConflictingExtensionProperties.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("DuplicateParameterNamesInFunctionType.kt")
+            public void testDuplicateParameterNamesInFunctionType() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/redeclarations/DuplicateParameterNamesInFunctionType.kt");
                 doTest(fileName);
             }
 
@@ -21150,6 +21168,36 @@ public class DiagnosticsTestGenerated extends AbstractDiagnosticsTest {
                     doTest(fileName);
                 }
 
+                @TestMetadata("setNotNullInTry.kt")
+                public void testSetNotNullInTry() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/smartCasts/varnotnull/setNotNullInTry.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("setNullInTry.kt")
+                public void testSetNullInTry() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/smartCasts/varnotnull/setNullInTry.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("setNullInTryFinally.kt")
+                public void testSetNullInTryFinally() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/smartCasts/varnotnull/setNullInTryFinally.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("setNullInTryUnsound.kt")
+                public void testSetNullInTryUnsound() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/smartCasts/varnotnull/setNullInTryUnsound.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("setSameInTry.kt")
+                public void testSetSameInTry() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/smartCasts/varnotnull/setSameInTry.kt");
+                    doTest(fileName);
+                }
+
                 @TestMetadata("toFlexibleType.kt")
                 public void testToFlexibleType() throws Exception {
                     String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/smartCasts/varnotnull/toFlexibleType.kt");
@@ -23008,6 +23056,12 @@ public class DiagnosticsTestGenerated extends AbstractDiagnosticsTest {
             @TestMetadata("UnaryVsVararg.kt")
             public void testUnaryVsVararg() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/varargs/UnaryVsVararg.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("varargInSetter.kt")
+            public void testVarargInSetter() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/varargs/varargInSetter.kt");
                 doTest(fileName);
             }
 

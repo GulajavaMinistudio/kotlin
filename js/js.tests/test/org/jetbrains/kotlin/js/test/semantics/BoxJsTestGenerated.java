@@ -1882,6 +1882,12 @@ public class BoxJsTestGenerated extends AbstractBoxJsTest {
                 KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("js/js.translator/testData/box/expression/compareTo"), Pattern.compile("^([^_](.+))\\.kt$"), TargetBackend.JS, true);
             }
 
+            @TestMetadata("booleanCompareTo.kt")
+            public void testBooleanCompareTo() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("js/js.translator/testData/box/expression/compareTo/booleanCompareTo.kt");
+                doTest(fileName);
+            }
+
             @TestMetadata("customCompareToMethod.kt")
             public void testCustomCompareToMethod() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("js/js.translator/testData/box/expression/compareTo/customCompareToMethod.kt");
@@ -4664,6 +4670,12 @@ public class BoxJsTestGenerated extends AbstractBoxJsTest {
             doTest(fileName);
         }
 
+        @TestMetadata("keywordAsMemberName.kt")
+        public void testKeywordAsMemberName() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("js/js.translator/testData/box/inlineMultiModule/keywordAsMemberName.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("kt16144.kt")
         public void testKt16144() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("js/js.translator/testData/box/inlineMultiModule/kt16144.kt");
@@ -5270,6 +5282,12 @@ public class BoxJsTestGenerated extends AbstractBoxJsTest {
         @TestMetadata("importCountUmd.kt")
         public void testImportCountUmd() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("js/js.translator/testData/box/jsModule/importCountUmd.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("topLevelVarargFun.kt")
+        public void testTopLevelVarargFun() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("js/js.translator/testData/box/jsModule/topLevelVarargFun.kt");
             doTest(fileName);
         }
     }

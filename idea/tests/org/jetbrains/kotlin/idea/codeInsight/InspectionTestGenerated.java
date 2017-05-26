@@ -221,6 +221,12 @@ public class InspectionTestGenerated extends AbstractInspectionTest {
             doTest(fileName);
         }
 
+        @TestMetadata("memberVisibilityCanBePrivate/inspectionData/inspections.test")
+        public void testMemberVisibilityCanBePrivate_inspectionData_Inspections_test() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("idea/testData/inspections/memberVisibilityCanBePrivate/inspectionData/inspections.test");
+            doTest(fileName);
+        }
+
         @TestMetadata("overridingDeprecatedMember/inspectionData/inspections.test")
         public void testOverridingDeprecatedMember_inspectionData_Inspections_test() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("idea/testData/inspections/overridingDeprecatedMember/inspectionData/inspections.test");
@@ -296,6 +302,12 @@ public class InspectionTestGenerated extends AbstractInspectionTest {
         @TestMetadata("replaceCallWithComparison/inspectionData/inspections.test")
         public void testReplaceCallWithComparison_inspectionData_Inspections_test() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("idea/testData/inspections/replaceCallWithComparison/inspectionData/inspections.test");
+            doTest(fileName);
+        }
+
+        @TestMetadata("replaceRangeToWithUntil/inspectionData/inspections.test")
+        public void testReplaceRangeToWithUntil_inspectionData_Inspections_test() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("idea/testData/inspections/replaceRangeToWithUntil/inspectionData/inspections.test");
             doTest(fileName);
         }
 

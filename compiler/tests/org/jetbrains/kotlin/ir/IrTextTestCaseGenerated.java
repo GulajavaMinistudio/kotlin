@@ -74,6 +74,12 @@ public class IrTextTestCaseGenerated extends AbstractIrTextTestCase {
             doTest(fileName);
         }
 
+        @TestMetadata("dataClassWithArrayMembers.kt")
+        public void testDataClassWithArrayMembers() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/ir/irText/classes/dataClassWithArrayMembers.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("dataClasses.kt")
         public void testDataClasses() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/ir/irText/classes/dataClasses.kt");
@@ -560,6 +566,12 @@ public class IrTextTestCaseGenerated extends AbstractIrTextTestCase {
         @TestMetadata("callableRefToGenericMember.kt")
         public void testCallableRefToGenericMember() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/ir/irText/expressions/callableRefToGenericMember.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("callableReferenceToImportedFromObject.kt")
+        public void testCallableReferenceToImportedFromObject() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/ir/irText/expressions/callableReferenceToImportedFromObject.kt");
             doTest(fileName);
         }
 
