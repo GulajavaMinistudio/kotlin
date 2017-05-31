@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package org.jetbrains.kotlin.js.translate.utils
 
+import com.intellij.psi.PsiElement
 import com.intellij.util.SmartList
 import org.jetbrains.kotlin.backend.common.COROUTINES_INTRINSICS_PACKAGE_FQ_NAME
 import org.jetbrains.kotlin.backend.common.COROUTINE_SUSPENDED_NAME
@@ -36,6 +37,7 @@ import org.jetbrains.kotlin.js.translate.utils.TranslationUtils.simpleReturnFunc
 import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.DescriptorUtils
 import org.jetbrains.kotlin.resolve.descriptorUtil.hasOrInheritsParametersWithDefaultValue
+import org.jetbrains.kotlin.resolve.source.getPsi
 import org.jetbrains.kotlin.types.KotlinType
 
 fun generateDelegateCall(
@@ -44,7 +46,8 @@ fun generateDelegateCall(
         toDescriptor: FunctionDescriptor,
         thisObject: JsExpression,
         context: TranslationContext,
-        detectDefaultParameters: Boolean
+        detectDefaultParameters: Boolean,
+        source: PsiElement?
 ): JsStatement {
     fun FunctionDescriptor.getNameForFunctionWithPossibleDefaultParam() =
             if (detectDefaultParameters && hasOrInheritsParametersWithDefaultValue()) {
@@ -80,6 +83,8 @@ fun generateDelegateCall(
     else {
         JsInvocation(overriddenMemberFunctionRef, args)
     }
+
+    invocation.source = source
 
     val functionObject = simpleReturnFunction(context.scope(), invocation)
     functionObject.parameters.addAll(parameters)
@@ -150,7 +155,7 @@ fun TranslationContext.addAccessorsToPrototype(
 ) {
     val prototypeRef = JsAstUtils.prototypeOf(getInnerReference(containingClass))
     val propertyName = getNameForDescriptor(propertyDescriptor)
-    val defineProperty = JsAstUtils.defineProperty(prototypeRef, propertyName.ident, literal, program())
+    val defineProperty = JsAstUtils.defineProperty(prototypeRef, propertyName.ident, literal)
     addDeclarationStatement(defineProperty.makeStmt())
 }
 
@@ -184,6 +189,7 @@ fun JsFunction.fillCoroutineMetadata(
             resultName = getCoroutinePropertyName("result"),
             exceptionName = getCoroutinePropertyName("exception"),
             hasController = hasController,
-            hasReceiver = descriptor.dispatchReceiverParameter != null
+            hasReceiver = descriptor.dispatchReceiverParameter != null,
+            psiElement = descriptor.source.getPsi()
     )
 }

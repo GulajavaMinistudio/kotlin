@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -390,7 +390,8 @@ public class TranslationContext {
             return nameRef;
         }
 
-        return aliasingContext.getAliasForDescriptor(descriptor);
+        JsExpression alias = aliasingContext.getAliasForDescriptor(descriptor);
+        return alias != null ? alias.deepCopy() : null;
     }
 
     @NotNull
@@ -407,7 +408,7 @@ public class TranslationContext {
 
         if (DescriptorUtils.isObject(descriptor.getContainingDeclaration())) {
             if (isConstructorOrDirectScope(descriptor.getContainingDeclaration())) {
-                return JsLiteral.THIS;
+                return new JsThisRef();
             }
             else {
                 ClassDescriptor objectDescriptor = (ClassDescriptor) descriptor.getContainingDeclaration();
@@ -415,7 +416,7 @@ public class TranslationContext {
             }
         }
 
-        if (descriptor.getValue() instanceof ExtensionReceiver) return JsLiteral.THIS;
+        if (descriptor.getValue() instanceof ExtensionReceiver) return new JsThisRef();
 
         ClassifierDescriptor classifier = descriptor.getValue().getType().getConstructor().getDeclarationDescriptor();
 
@@ -427,7 +428,7 @@ public class TranslationContext {
         assert classDescriptor != null : "Can't get ReceiverParameterDescriptor in top level";
         JsExpression receiver = getAliasForDescriptor(classDescriptor.getThisAsReceiverParameter());
         if (receiver == null) {
-            receiver = JsLiteral.THIS;
+            receiver = new JsThisRef();
         }
 
         return getDispatchReceiverPath(cls, receiver);
@@ -467,7 +468,7 @@ public class TranslationContext {
             if (name != null) {
                 JsExpression result;
                 if (shouldCaptureViaThis()) {
-                    result = JsLiteral.THIS;
+                    result = new JsThisRef();
                     int depth = getOuterLocalClassDepth();
                     for (int i = 0; i < depth; ++i) {
                         result = new JsNameRef(Namer.OUTER_FIELD_NAME, result);
@@ -572,7 +573,7 @@ public class TranslationContext {
             return getDispatchReceiver((ReceiverParameterDescriptor) descriptor);
         }
         if (isCoroutineLambda(descriptor)) {
-            return JsLiteral.THIS;
+            return new JsThisRef();
         }
         return getNameForDescriptor(descriptor).makeRef();
     }
