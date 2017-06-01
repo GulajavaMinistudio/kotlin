@@ -189,7 +189,8 @@ public class FunctionCodegen {
             return;
         }
 
-        JvmMethodGenericSignature jvmSignature = typeMapper.mapSignatureWithGeneric(functionDescriptor, contextKind);
+        boolean hasSpecialBridge = hasSpecialBridgeMethod(functionDescriptor);
+        JvmMethodGenericSignature jvmSignature = typeMapper.mapSignatureWithGeneric(functionDescriptor, contextKind, hasSpecialBridge);
         Method asmMethod = jvmSignature.getAsmMethod();
 
         int flags = getMethodAsmFlags(functionDescriptor, contextKind, state);
@@ -796,6 +797,13 @@ public class FunctionCodegen {
         return bytecode;
     }
 
+    private boolean hasSpecialBridgeMethod(@NotNull FunctionDescriptor descriptor) {
+        if (SpecialBuiltinMembers.getOverriddenBuiltinReflectingJvmDescriptor(descriptor) == null) return false;
+        return !BuiltinSpecialBridgesUtil.generateBridgesForBuiltinSpecial(
+                descriptor, typeMapper::mapAsmMethod, IS_PURE_INTERFACE_CHECKER
+        ).isEmpty();
+    }
+
     public void generateBridges(@NotNull FunctionDescriptor descriptor) {
         if (descriptor instanceof ConstructorDescriptor) return;
         if (owner.getContextKind() == OwnerKind.DEFAULT_IMPLS) return;
@@ -1126,8 +1134,12 @@ public class FunctionCodegen {
         boolean isSpecialOrDelegationToSuper = isSpecialBridge || isStubDeclarationWithDelegationToSuper;
         int flags = ACC_PUBLIC | ACC_BRIDGE | (!isSpecialOrDelegationToSuper ? ACC_SYNTHETIC : 0) | (isSpecialBridge ? ACC_FINAL : 0); // TODO.
 
-        MethodVisitor mv =
-                v.newMethod(JvmDeclarationOriginKt.Bridge(descriptor, origin), flags, bridge.getName(), bridge.getDescriptor(), null, null);
+        String bridgeSignature =
+                isSpecialBridge ? typeMapper.mapSignatureWithGeneric(descriptor, OwnerKind.IMPLEMENTATION).getGenericsSignature()
+                                : null;
+
+        MethodVisitor mv = v.newMethod(JvmDeclarationOriginKt.Bridge(descriptor, origin), flags,
+                                       bridge.getName(), bridge.getDescriptor(), bridgeSignature, null);
         if (!state.getClassBuilderMode().generateBodies) return;
 
         mv.visitCode();
