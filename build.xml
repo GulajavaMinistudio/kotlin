@@ -283,7 +283,7 @@
     <target name="preloader">
         <cleandir dir="${output}/classes/preloader"/>
         <javac destdir="${output}/classes/preloader" debug="true" debuglevel="lines,vars,source" includeAntRuntime="false"
-               source="${java.target}" target="${java.target}">
+               source="1.6" target="1.6">
             <src location="${basedir}/compiler/preloader/src"/>
         </javac>
 
@@ -354,6 +354,7 @@
                 <fileset dir="${output}/builtins">
                     <include name="kotlin/**"/>
                 </fileset>
+                <fileset dir="${basedir}/core/deserialization/src" includes="META-INF/services/**"/>
                 <fileset dir="${basedir}/core/descriptor.loader.java/src" includes="META-INF/services/**"/>
                 <fileset dir="${basedir}/compiler/frontend.java/src" includes="META-INF/services/**"/>
                 <fileset dir="${basedir}/compiler/backend/src" includes="META-INF/services/**"/>
