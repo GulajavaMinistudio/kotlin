@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,23 +14,14 @@
  * limitations under the License.
  */
 
-package org.jetbrains.kotlin.annotation.processing.impl
+package org.jetbrains.kotlin.js.test.utils
 
-import com.intellij.openapi.Disposable
+import org.jetbrains.kotlin.js.backend.ast.JsProgram
+import org.jetbrains.kotlin.js.util.TextOutputImpl
 
-class DisposableRef<out T : Any>(initialValue: T): Disposable {
-    @Volatile
-    private var value: T? = initialValue
-    
-    operator fun invoke() = value ?: throw IllegalStateException("Reference is disposed")
-    
-    override fun dispose() {
-        value = null
-    }
-}
-
-fun <T : Any> T.toDisposable() = DisposableRef(this)
-
-fun dispose(vararg refs: DisposableRef<*>?) {
-    refs.forEach { it?.dispose() }
+fun JsProgram.toStringWithLineNumbers(): String {
+    val output = TextOutputImpl()
+    val lineCollector = LineCollector().also { it.accept(this) }
+    LineOutputToStringVisitor(output, lineCollector).accept(this.globalBlock)
+    return output.toString()
 }
