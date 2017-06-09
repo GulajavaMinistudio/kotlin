@@ -114,6 +114,12 @@ public class ReplInterpreterTestGenerated extends AbstractReplInterpreterTest {
         doTest(fileName);
     }
 
+    @TestMetadata("noWarningsWithErrors.repl")
+    public void testNoWarningsWithErrors() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/repl/noWarningsWithErrors.repl");
+        doTest(fileName);
+    }
+
     @TestMetadata("simple.repl")
     public void testSimple() throws Exception {
         String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/repl/simple.repl");
@@ -279,6 +285,12 @@ public class ReplInterpreterTestGenerated extends AbstractReplInterpreterTest {
     public static class Multiline extends AbstractReplInterpreterTest {
         public void testAllFilesPresentInMultiline() throws Exception {
             KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/repl/multiline"), Pattern.compile("^(.+)\\.repl$"), TargetBackend.ANY, true);
+        }
+
+        @TestMetadata("blankLinesAndComments.repl")
+        public void testBlankLinesAndComments() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/repl/multiline/blankLinesAndComments.repl");
+            doTest(fileName);
         }
 
         @TestMetadata("functionOnSeveralLines.repl")
