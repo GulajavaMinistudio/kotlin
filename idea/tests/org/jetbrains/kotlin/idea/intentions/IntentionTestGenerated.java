@@ -2974,6 +2974,12 @@ public class IntentionTestGenerated extends AbstractIntentionTest {
                 doTest(fileName);
             }
 
+            @TestMetadata("noModifierListSealed.kt")
+            public void testNoModifierListSealed() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("idea/testData/intentions/changeVisibility/private/noModifierListSealed.kt");
+                doTest(fileName);
+            }
+
             @TestMetadata("noModifierListSecondaryConstructor.kt")
             public void testNoModifierListSecondaryConstructor() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("idea/testData/intentions/changeVisibility/private/noModifierListSecondaryConstructor.kt");
@@ -11627,6 +11633,12 @@ public class IntentionTestGenerated extends AbstractIntentionTest {
         @TestMetadata("annotationWithUseSite.kt")
         public void testAnnotationWithUseSite() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("idea/testData/intentions/movePropertyToConstructor/annotationWithUseSite.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("declaredInInterface.kt")
+        public void testDeclaredInInterface() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("idea/testData/intentions/movePropertyToConstructor/declaredInInterface.kt");
             doTest(fileName);
         }
 

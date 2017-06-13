@@ -14,16 +14,11 @@
  * limitations under the License.
  */
 
-package org.jetbrains.kotlin.idea.highlighter;
+package org.jetbrains.kotlin.idea.highlighter
 
-import com.intellij.lang.annotation.AnnotationHolder;
-import org.jetbrains.kotlin.resolve.BindingContext;
+import com.intellij.lang.annotation.AnnotationHolder
+import org.jetbrains.kotlin.resolve.BindingContext
 
-abstract class AfterAnalysisHighlightingVisitor extends HighlightingVisitor {
-    protected BindingContext bindingContext;
-
-    protected AfterAnalysisHighlightingVisitor(AnnotationHolder holder, BindingContext bindingContext) {
-        super(holder);
-        this.bindingContext = bindingContext;
-    }
-}
+internal abstract class AfterAnalysisHighlightingVisitor protected constructor(
+        holder: AnnotationHolder, protected var bindingContext: BindingContext
+) : HighlightingVisitor(holder)
