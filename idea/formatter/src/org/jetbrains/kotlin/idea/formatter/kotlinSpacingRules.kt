@@ -33,10 +33,14 @@ import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.lexer.KtTokens.*
 import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtFunction
+import org.jetbrains.kotlin.psi.KtPrimaryConstructor
 import org.jetbrains.kotlin.psi.KtPropertyAccessor
 import org.jetbrains.kotlin.psi.psiUtil.textRangeWithoutComments
 
 val MODIFIERS_LIST_ENTRIES = TokenSet.orSet(TokenSet.create(ANNOTATION_ENTRY, ANNOTATION), MODIFIER_KEYWORDS)
+
+val EXTEND_COLON_ELEMENTS =
+        TokenSet.create(TYPE_CONSTRAINT, CLASS, OBJECT_DECLARATION, TYPE_PARAMETER, ENUM_ENTRY, SECONDARY_CONSTRUCTOR)
 
 fun SpacingBuilder.beforeInside(element: IElementType, tokenSet: TokenSet, spacingFun: RuleBuilder.() -> Unit) {
     tokenSet.types.forEach { inType -> beforeInside(element, inType).spacingFun() }
@@ -201,24 +205,26 @@ fun createSpacingBuilder(settings: CodeStyleSettings, builderUtil: KotlinSpacing
 
             after(LBRACKET).spaces(0)
             before(RBRACKET).spaces(0)
-            after(LPAR).spaces(0)
-            before(RPAR).spaces(0)
 
-            afterInside(LPAR, VALUE_PARAMETER_LIST).spaces(0)
-            beforeInside(RPAR, VALUE_PARAMETER_LIST).spaces(0)
+            afterInside(LPAR, VALUE_PARAMETER_LIST).spaces(0, kotlinCommonSettings.METHOD_PARAMETERS_LPAREN_ON_NEXT_LINE)
+            beforeInside(RPAR, VALUE_PARAMETER_LIST).spaces(0, kotlinCommonSettings.METHOD_PARAMETERS_RPAREN_ON_NEXT_LINE)
             afterInside(LT, TYPE_PARAMETER_LIST).spaces(0)
             beforeInside(GT, TYPE_PARAMETER_LIST).spaces(0)
-            afterInside(LPAR, VALUE_ARGUMENT_LIST).spaces(0)
-            beforeInside(RPAR, VALUE_ARGUMENT_LIST).spaces(0)
+            afterInside(LPAR, VALUE_ARGUMENT_LIST).spaces(0, kotlinCommonSettings.CALL_PARAMETERS_LPAREN_ON_NEXT_LINE)
+            beforeInside(RPAR, VALUE_ARGUMENT_LIST).spaces(0, kotlinCommonSettings.CALL_PARAMETERS_RPAREN_ON_NEXT_LINE)
             afterInside(LT, TYPE_ARGUMENT_LIST).spaces(0)
             beforeInside(GT, TYPE_ARGUMENT_LIST).spaces(0)
             before(TYPE_ARGUMENT_LIST).spaces(0)
 
-            betweenInside(FOR_KEYWORD, LPAR, FOR).spacing(1, 1, 0, false, 0)
-            betweenInside(IF_KEYWORD, LPAR, IF).spacing(1, 1, 0, false, 0)
-            betweenInside(WHILE_KEYWORD, LPAR, WHILE).spacing(1, 1, 0, false, 0)
-            betweenInside(WHILE_KEYWORD, LPAR, DO_WHILE).spacing(1, 1, 0, false, 0)
-            betweenInside(WHEN_KEYWORD, LPAR, WHEN).spacing(1, 1, 0, false, 0)
+            after(LPAR).spaces(0)
+            before(RPAR).spaces(0)
+
+            betweenInside(FOR_KEYWORD, LPAR, FOR).spaceIf(kotlinCommonSettings.SPACE_BEFORE_FOR_PARENTHESES)
+            betweenInside(IF_KEYWORD, LPAR, IF).spaceIf(kotlinCommonSettings.SPACE_BEFORE_IF_PARENTHESES)
+            betweenInside(WHILE_KEYWORD, LPAR, WHILE).spaceIf(kotlinCommonSettings.SPACE_BEFORE_WHILE_PARENTHESES)
+            betweenInside(WHILE_KEYWORD, LPAR, DO_WHILE).spaceIf(kotlinCommonSettings.SPACE_BEFORE_WHILE_PARENTHESES)
+            betweenInside(WHEN_KEYWORD, LPAR, WHEN).spaceIf(kotlinSettings.SPACE_BEFORE_WHEN_PARENTHESES)
+            betweenInside(CATCH_KEYWORD, VALUE_PARAMETER_LIST, CATCH).spaceIf(kotlinCommonSettings.SPACE_BEFORE_CATCH_PARENTHESES)
 
             betweenInside(LPAR, VALUE_PARAMETER, FOR).spaces(0)
             betweenInside(LPAR, DESTRUCTURING_DECLARATION, FOR).spaces(0)
@@ -239,9 +245,6 @@ fun createSpacingBuilder(settings: CodeStyleSettings, builderUtil: KotlinSpacing
             beforeInside(COLON, TYPE_COLON_ELEMENTS) { spaceIf(kotlinSettings.SPACE_BEFORE_TYPE_COLON) }
             afterInside(COLON, TYPE_COLON_ELEMENTS) { spaceIf(kotlinSettings.SPACE_AFTER_TYPE_COLON) }
 
-            val EXTEND_COLON_ELEMENTS =
-                    TokenSet.create(TYPE_CONSTRAINT, CLASS, OBJECT_DECLARATION, TYPE_PARAMETER, ENUM_ENTRY, SECONDARY_CONSTRUCTOR)
-            beforeInside(COLON, EXTEND_COLON_ELEMENTS) { spaceIf(kotlinSettings.SPACE_BEFORE_EXTEND_COLON) }
             afterInside(COLON, EXTEND_COLON_ELEMENTS) { spaceIf(kotlinSettings.SPACE_AFTER_EXTEND_COLON) }
 
             beforeInside(ARROW, FUNCTION_LITERAL).spaceIf(kotlinSettings.SPACE_BEFORE_LAMBDA_ARROW)
@@ -398,20 +401,16 @@ fun createSpacingBuilder(settings: CodeStyleSettings, builderUtil: KotlinSpacing
 
             inPosition(parent = FUNCTION_LITERAL,
                        left = LBRACE)
-                    .customRule {
-                _, _, right ->
+                    .customRule { _, _, right ->
                 val rightNode = right.node!!
                 val rightType = rightNode.elementType
-                var numSpaces = spacesInSimpleFunction
+                val numSpaces = spacesInSimpleFunction
                 if (rightType == VALUE_PARAMETER_LIST) {
-                    val firstParamListNode = rightNode.firstChildNode
-                    if (firstParamListNode != null && firstParamListNode.elementType == LPAR) {
-                        // Don't put space for situation {<here>(a: Int) -> a }
-                        numSpaces = 0
-                    }
+                    createSpacing(numSpaces, keepLineBreaks = false)
                 }
-
-                createSpacing(numSpaces)
+                else {
+                    createSpacing(numSpaces)
+                }
             }
 
             inPosition(parent = CLASS_BODY, right = RBRACE).lineBreakIfLineBreakInParent(numSpacesOtherwise = 1)
@@ -448,6 +447,20 @@ fun createSpacingBuilder(settings: CodeStyleSettings, builderUtil: KotlinSpacing
                                                  commonCodeStyleSettings.KEEP_LINE_BREAKS,
                                                  commonCodeStyleSettings.KEEP_BLANK_LINES_IN_CODE)
             }
+
+            inPosition(parentSet = EXTEND_COLON_ELEMENTS, left = PRIMARY_CONSTRUCTOR, right = COLON).customRule { parent, left, _ ->
+                val primaryConstructor = left.node.psi as KtPrimaryConstructor
+                val rightParenthesis = primaryConstructor.valueParameterList?.rightParenthesis
+                val prevSibling = rightParenthesis?.prevSibling
+                val spaces = if (kotlinSettings.SPACE_BEFORE_EXTEND_COLON) 1 else 0
+                // TODO This should use DependentSpacingRule, but it doesn't set keepLineBreaks to false if max LFs is 0
+                if ((prevSibling as? PsiWhiteSpace)?.textContains('\n') == true || commonCodeStyleSettings.METHOD_PARAMETERS_RPAREN_ON_NEXT_LINE) {
+                    createSpacing(spaces, keepLineBreaks = false)
+                }
+                else {
+                    createSpacing(spaces)
+                }
+            }
         }
 
         simple {
@@ -458,6 +471,8 @@ fun createSpacingBuilder(settings: CodeStyleSettings, builderUtil: KotlinSpacing
 
             // if when entry has block, spacing after arrow should be set by lbrace rule
             aroundInside(ARROW, WHEN_ENTRY).spaceIf(kotlinSettings.SPACE_AROUND_WHEN_ARROW)
+
+            beforeInside(COLON, EXTEND_COLON_ELEMENTS) { spaceIf(kotlinSettings.SPACE_BEFORE_EXTEND_COLON) }
 
             after(EOL_COMMENT).lineBreakInCode()
         }
