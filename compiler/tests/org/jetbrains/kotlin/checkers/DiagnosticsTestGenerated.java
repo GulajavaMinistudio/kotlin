@@ -8209,6 +8209,12 @@ public class DiagnosticsTestGenerated extends AbstractDiagnosticsTest {
                 doTest(fileName);
             }
 
+            @TestMetadata("kt16016.kt")
+            public void testKt16016() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/functionLiterals/kt16016.kt");
+                doTest(fileName);
+            }
+
             @TestMetadata("kt2906.kt")
             public void testKt2906() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/functionLiterals/kt2906.kt");
@@ -12259,6 +12265,12 @@ public class DiagnosticsTestGenerated extends AbstractDiagnosticsTest {
             @TestMetadata("traitDefaultCall.kt")
             public void testTraitDefaultCall() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/j+k/traitDefaultCall.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("typeAliasWithSamConstructor.kt")
+            public void testTypeAliasWithSamConstructor() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/j+k/typeAliasWithSamConstructor.kt");
                 doTest(fileName);
             }
 

@@ -197,6 +197,12 @@ public class InspectionTestGenerated extends AbstractInspectionTest {
             doTest(fileName);
         }
 
+        @TestMetadata("emptyRange/inspectionData/inspections.test")
+        public void testEmptyRange_inspectionData_Inspections_test() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("idea/testData/inspections/emptyRange/inspectionData/inspections.test");
+            doTest(fileName);
+        }
+
         @TestMetadata("equalsAndHashCode/inspectionData/inspections.test")
         public void testEqualsAndHashCode_inspectionData_Inspections_test() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("idea/testData/inspections/equalsAndHashCode/inspectionData/inspections.test");
@@ -398,6 +404,12 @@ public class InspectionTestGenerated extends AbstractInspectionTest {
         @TestMetadata("unusedSymbol/typeParameter/inspectionData/inspections.test")
         public void testUnusedSymbol_typeParameter_inspectionData_Inspections_test() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("idea/testData/inspections/unusedSymbol/typeParameter/inspectionData/inspections.test");
+            doTest(fileName);
+        }
+
+        @TestMetadata("wrapUnaryOperator/inspectionData/inspections.test")
+        public void testWrapUnaryOperator_inspectionData_Inspections_test() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("idea/testData/inspections/wrapUnaryOperator/inspectionData/inspections.test");
             doTest(fileName);
         }
     }
