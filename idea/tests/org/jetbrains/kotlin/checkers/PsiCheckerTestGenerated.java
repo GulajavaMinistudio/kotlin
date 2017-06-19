@@ -977,4 +977,25 @@ public class PsiCheckerTestGenerated extends AbstractPsiCheckerTest {
             doTestWithInfos(fileName);
         }
     }
+
+    @TestMetadata("idea/testData/checker/diagnosticsMessage")
+    @TestDataPath("$PROJECT_ROOT")
+    @RunWith(JUnit3RunnerWithInners.class)
+    public static class DiagnosticsMessage extends AbstractPsiCheckerTest {
+        public void testAllFilesPresentInDiagnosticsMessage() throws Exception {
+            KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("idea/testData/checker/diagnosticsMessage"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.ANY, true);
+        }
+
+        @TestMetadata("incompleteTypeArgumentList.kt")
+        public void testIncompleteTypeArgumentList() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("idea/testData/checker/diagnosticsMessage/incompleteTypeArgumentList.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("operatorCallDiagnosticsOnInOperator.kt")
+        public void testOperatorCallDiagnosticsOnInOperator() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("idea/testData/checker/diagnosticsMessage/operatorCallDiagnosticsOnInOperator.kt");
+            doTest(fileName);
+        }
+    }
 }
