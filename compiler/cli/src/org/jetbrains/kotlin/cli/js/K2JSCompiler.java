@@ -19,7 +19,9 @@ package org.jetbrains.kotlin.cli.js;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.io.FileUtil;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.util.ExceptionUtil;
 import com.intellij.util.SmartList;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.HashMap;
@@ -34,6 +36,7 @@ import org.jetbrains.kotlin.cli.common.ExitCode;
 import org.jetbrains.kotlin.cli.common.arguments.K2JSCompilerArguments;
 import org.jetbrains.kotlin.cli.common.arguments.K2JsArgumentConstants;
 import org.jetbrains.kotlin.cli.common.messages.AnalyzerWithCompilerReport;
+import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity;
 import org.jetbrains.kotlin.cli.common.messages.MessageCollector;
 import org.jetbrains.kotlin.cli.common.output.outputUtils.OutputUtilsKt;
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles;
@@ -50,6 +53,7 @@ import org.jetbrains.kotlin.js.config.JsConfig;
 import org.jetbrains.kotlin.js.facade.K2JSTranslator;
 import org.jetbrains.kotlin.js.facade.MainCallParameters;
 import org.jetbrains.kotlin.js.facade.TranslationResult;
+import org.jetbrains.kotlin.js.sourceMap.SourceFilePathResolver;
 import org.jetbrains.kotlin.progress.ProgressIndicatorAndCompilationCanceledStatus;
 import org.jetbrains.kotlin.psi.KtFile;
 import org.jetbrains.kotlin.serialization.js.ModuleKind;
@@ -58,8 +62,9 @@ import org.jetbrains.kotlin.utils.PathUtil;
 import org.jetbrains.kotlin.utils.StringsKt;
 
 import java.io.File;
-import java.util.List;
-import java.util.Map;
+import java.io.IOException;
+import java.util.*;
+import java.util.stream.Collectors;
 
 import static org.jetbrains.kotlin.cli.common.ExitCode.COMPILATION_ERROR;
 import static org.jetbrains.kotlin.cli.common.ExitCode.OK;
@@ -179,6 +184,10 @@ public class K2JSCompiler extends CLICompiler<K2JSCompilerArguments> {
             }
         }
 
+        if (config.getConfiguration().getBoolean(JSConfigurationKeys.SOURCE_MAP)) {
+            checkDuplicateSourceFileNames(messageCollector, sourcesFiles, config.getSourceMapRoots());
+        }
+
         MainCallParameters mainCallParameters = createMainCallParameters(arguments.main);
         TranslationResult translationResult;
 
@@ -216,6 +225,41 @@ public class K2JSCompiler extends CLICompiler<K2JSCompilerArguments> {
                                configuration.getBoolean(CommonConfigurationKeys.REPORT_OUTPUT_FILES));
 
         return OK;
+    }
+
+    private static void checkDuplicateSourceFileNames(
+            @NotNull MessageCollector log,
+            @NotNull List<KtFile> sourceFiles,
+            @NotNull List<String> sourceRoots
+    ) {
+        if (sourceRoots.isEmpty()) return;
+
+        List<File> sourceRootFiles = sourceRoots.stream().map(File::new).collect(Collectors.toList());
+        SourceFilePathResolver pathResolver = new SourceFilePathResolver(sourceRootFiles);
+        Map<String, String> pathMap = new HashMap<>();
+        Set<String> duplicatePaths = new HashSet<>();
+
+        try {
+            for (KtFile sourceFile : sourceFiles) {
+                String path = sourceFile.getVirtualFile().getPath();
+                String relativePath = pathResolver.getPathRelativeToSourceRoots(new File(sourceFile.getVirtualFile().getPath()));
+
+                String existingPath = pathMap.get(relativePath);
+                if (existingPath != null) {
+                    if (duplicatePaths.add(relativePath)) {
+                        log.report(WARNING, "There are files with same path '" + relativePath + "', relative to source roots: " +
+                                            "'" + path + "' and '" + existingPath + "'. " +
+                                            "This will likely cause problems with debugger", null);
+                    }
+                }
+                else {
+                    pathMap.put(relativePath, path);
+                }
+            }
+        }
+        catch (IOException e) {
+            log.report(ERROR, "IO error occurred validating source path:\n" + ExceptionUtil.getThrowableText(e), null);
+        }
     }
 
     private static void reportCompiledSourcesList(@NotNull MessageCollector messageCollector, @NotNull List<KtFile> sourceFiles) {
@@ -261,6 +305,23 @@ public class K2JSCompiler extends CLICompiler<K2JSCompilerArguments> {
 
         if (arguments.sourceMap) {
             configuration.put(JSConfigurationKeys.SOURCE_MAP, true);
+            if (arguments.sourceMapPrefix != null) {
+                configuration.put(JSConfigurationKeys.SOURCE_MAP_PREFIX, arguments.sourceMapPrefix);
+            }
+
+            String sourceMapSourceRoots = arguments.sourceMapSourceRoots != null ?
+                                          arguments.sourceMapSourceRoots :
+                                          calculateSourceMapSourceRoot(messageCollector, arguments);
+            List<String> sourceMapSourceRootList = StringUtil.split(sourceMapSourceRoots, File.pathSeparator);
+            configuration.put(JSConfigurationKeys.SOURCE_MAP_SOURCE_ROOTS, sourceMapSourceRootList);
+        }
+        else {
+            if (arguments.sourceMapPrefix != null) {
+                messageCollector.report(WARNING, "source-map-prefix argument has no effect without source map", null);
+            }
+            if (arguments.sourceMapSourceRoots != null) {
+                messageCollector.report(WARNING, "source-map-source-root argument has no effect without source map", null);
+            }
         }
         if (arguments.metaInfo) {
             configuration.put(JSConfigurationKeys.META_INFO, true);
@@ -298,6 +359,58 @@ public class K2JSCompiler extends CLICompiler<K2JSCompilerArguments> {
         }
         configuration.put(JSConfigurationKeys.MODULE_KIND, moduleKind);
     }
+
+    @NotNull
+    private static String calculateSourceMapSourceRoot(
+            @NotNull MessageCollector messageCollector,
+            @NotNull K2JSCompilerArguments arguments
+    ) {
+        File commonPath = null;
+        List<File> pathToRoot = new ArrayList<>();
+        Map<File, Integer> pathToRootIndexes = new HashMap<>();
+
+        try {
+            for (String path : arguments.freeArgs) {
+                File file = new File(path).getCanonicalFile();
+                if (commonPath == null) {
+                    commonPath = file;
+
+                    while (file != null) {
+                        pathToRoot.add(file);
+                        file = file.getParentFile();
+                    }
+                    Collections.reverse(pathToRoot);
+
+                    for (int i = 0; i < pathToRoot.size(); ++i) {
+                        pathToRootIndexes.put(pathToRoot.get(i), i);
+                    }
+                }
+                else {
+                    while (file != null) {
+                        Integer existingIndex = pathToRootIndexes.get(file);
+                        if (existingIndex != null) {
+                            existingIndex = Math.min(existingIndex, pathToRoot.size() - 1);
+                            pathToRoot.subList(existingIndex + 1, pathToRoot.size()).clear();
+                            commonPath = pathToRoot.get(pathToRoot.size() - 1);
+                            break;
+                        }
+                        file = file.getParentFile();
+                    }
+                    if (file == null) {
+                        break;
+                    }
+                }
+            }
+        }
+        catch (IOException e) {
+            String text = ExceptionUtil.getThrowableText(e);
+            messageCollector.report(CompilerMessageSeverity.ERROR, "IO error occurred calculating source root:\n" + text, null);
+            return ".";
+        }
+
+        return commonPath != null ? commonPath.getPath() : ".";
+    }
+
 
     private static MainCallParameters createMainCallParameters(String main) {
         if (K2JsArgumentConstants.NO_CALL.equals(main)) {

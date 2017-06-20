@@ -6,6 +6,7 @@ import org.junit.Test
 import java.io.File
 import java.util.zip.ZipFile
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class Kotlin2JsGradlePluginIT : BaseGradleIT() {
     @Test
@@ -168,6 +169,31 @@ class Kotlin2JsGradlePluginIT : BaseGradleIT() {
         }
         project.build("build") {
             assertSuccessful()
+        }
+    }
+
+    @Test
+    fun testKotlinJsSourceMap() {
+        val project = Project("kotlin2JsNoOutputFileProject", "2.10")
+
+        project.setupWorkingDir()
+
+        project.projectDir.getFileByName("build.gradle").modify {
+            it + "\n" +
+                    "compileKotlin2Js.kotlinOptions.sourceMap = true\n" +
+                    "compileKotlin2Js.kotlinOptions.sourceMapPrefix = \"prefixprefix/\"\n" +
+                    "compileKotlin2Js.kotlinOptions.outputFile = \"\${buildDir}/kotlin2js/main/app.js\"\n"
+        }
+
+        project.build("build") {
+            assertSuccessful()
+
+            val mapFilePath = "build/kotlin2js/main/app.js.map"
+            assertFileExists(mapFilePath)
+            val map = fileInWorkingDir(mapFilePath).readText()
+
+            val sourceFilePath = "prefixprefix/example/Dummy.kt"
+            assertTrue("Source map should contain reference to $sourceFilePath") { map.contains("\"$sourceFilePath\"") }
         }
     }
 }
