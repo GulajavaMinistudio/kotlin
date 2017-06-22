@@ -8692,6 +8692,12 @@ public class DiagnosticsTestGenerated extends AbstractDiagnosticsTest {
                 doTest(fileName);
             }
 
+            @TestMetadata("wrongNumberOfTypeArgumentsDiagnostic.kt")
+            public void testWrongNumberOfTypeArgumentsDiagnostic() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/generics/wrongNumberOfTypeArgumentsDiagnostic.kt");
+                doTest(fileName);
+            }
+
             @TestMetadata("compiler/testData/diagnostics/tests/generics/capturedParameters")
             @TestDataPath("$PROJECT_ROOT")
             @RunWith(JUnit3RunnerWithInners.class)
@@ -13906,6 +13912,12 @@ public class DiagnosticsTestGenerated extends AbstractDiagnosticsTest {
                 doTest(fileName);
             }
 
+            @TestMetadata("nullableReceiverWithOverloadedMethod.kt")
+            public void testNullableReceiverWithOverloadedMethod() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/nullabilityAndSmartCasts/nullableReceiverWithOverloadedMethod.kt");
+                doTest(fileName);
+            }
+
             @TestMetadata("PreferExtensionsOnNullableReceiver.kt")
             public void testPreferExtensionsOnNullableReceiver() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/nullabilityAndSmartCasts/PreferExtensionsOnNullableReceiver.kt");
@@ -13953,6 +13965,18 @@ public class DiagnosticsTestGenerated extends AbstractDiagnosticsTest {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/nullabilityAndSmartCasts/unnecessaryNotNullAssertion.kt");
                 doTest(fileName);
             }
+
+            @TestMetadata("unstableSmartcastWhenOpenGetterWithOverloading.kt")
+            public void testUnstableSmartcastWhenOpenGetterWithOverloading() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/nullabilityAndSmartCasts/unstableSmartcastWhenOpenGetterWithOverloading.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("unstableSmartcastWithOverloadedExtensions.kt")
+            public void testUnstableSmartcastWithOverloadedExtensions() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/nullabilityAndSmartCasts/unstableSmartcastWithOverloadedExtensions.kt");
+                doTest(fileName);
+            }
         }
 
         @TestMetadata("compiler/testData/diagnostics/tests/nullableTypes")
@@ -13984,6 +14008,18 @@ public class DiagnosticsTestGenerated extends AbstractDiagnosticsTest {
             @TestMetadata("nullableArgumentForIn.kt")
             public void testNullableArgumentForIn() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/nullableTypes/nullableArgumentForIn.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("nullableArgumentToNonNullParameterPlatform.kt")
+            public void testNullableArgumentToNonNullParameterPlatform() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/nullableTypes/nullableArgumentToNonNullParameterPlatform.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("nullableArgumentToNonNullParameterSimple.kt")
+            public void testNullableArgumentToNonNullParameterSimple() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/nullableTypes/nullableArgumentToNonNullParameterSimple.kt");
                 doTest(fileName);
             }
 
@@ -14506,6 +14542,12 @@ public class DiagnosticsTestGenerated extends AbstractDiagnosticsTest {
                 doTest(fileName);
             }
 
+            @TestMetadata("onlyPrivateOverloadsDiagnostic.kt")
+            public void testOnlyPrivateOverloadsDiagnostic() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/overload/onlyPrivateOverloadsDiagnostic.kt");
+                doTest(fileName);
+            }
+
             @TestMetadata("OverloadFunRegularAndExt.kt")
             public void testOverloadFunRegularAndExt() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/overload/OverloadFunRegularAndExt.kt");
@@ -14812,6 +14854,12 @@ public class DiagnosticsTestGenerated extends AbstractDiagnosticsTest {
             @TestMetadata("ObjectDelegationManyImpl.kt")
             public void testObjectDelegationManyImpl() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/override/ObjectDelegationManyImpl.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("overrideMemberFromFinalClass.kt")
+            public void testOverrideMemberFromFinalClass() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/override/overrideMemberFromFinalClass.kt");
                 doTest(fileName);
             }
 

@@ -53,6 +53,7 @@ import org.jetbrains.kotlin.types.checker.ErrorTypesAreEqualToAnything
 import org.jetbrains.kotlin.types.checker.KotlinTypeChecker
 import org.jetbrains.kotlin.types.expressions.DoubleColonExpressionResolver
 import org.jetbrains.kotlin.types.typeUtil.containsTypeProjectionsInTopLevelArguments
+import org.jetbrains.kotlin.types.typeUtil.makeNotNullable
 import java.util.*
 
 class CandidateResolver(
@@ -136,7 +137,7 @@ class CandidateResolver(
             val substitutor = TypeSubstitutor.create(SubstitutionFilteringInternalResolveAnnotations(substitution))
 
             if (expectedTypeArgumentCount != ktTypeArguments.size) {
-                candidateCall.addStatus(OTHER_ERROR)
+                candidateCall.addStatus(WRONG_NUMBER_OF_TYPE_ARGUMENTS_ERROR)
                 tracing.wrongNumberOfTypeArguments(trace, expectedTypeArgumentCount, candidateDescriptor)
             }
             else {
@@ -196,7 +197,7 @@ class CandidateResolver(
                 getReceiverValueWithSmartCast(receiverArgument, smartCastType), candidateDescriptor, scope.ownerDescriptor)
         return if (invisibleMember != null) {
             tracing.invisibleMember(trace, invisibleMember)
-            OTHER_ERROR
+            INVISIBLE_MEMBER_ERROR
         } else {
             SUCCESS
         }
@@ -376,7 +377,7 @@ class CandidateResolver(
                     if (!ArgumentTypeResolver.isSubtypeOfForArgumentType(type, expectedType)) {
                         val smartCast = smartCastValueArgumentTypeIfPossible(expression, newContext.expectedType, type, newContext)
                         if (smartCast == null) {
-                            resultStatus = OTHER_ERROR
+                            resultStatus = tryNotNullableArgument(type, expectedType) ?: OTHER_ERROR
                             matchStatus = ArgumentMatchStatus.TYPE_MISMATCH
                         }
                         else {
@@ -415,6 +416,14 @@ class CandidateResolver(
         return variants.firstOrNull { possibleType ->
             KotlinTypeChecker.DEFAULT.isSubtypeOf(possibleType, expectedType)
         }
+    }
+
+    private fun tryNotNullableArgument(argumentType: KotlinType, parameterType: KotlinType): ResolutionStatus? {
+        if (!argumentType.isMarkedNullable || parameterType.isMarkedNullable) return null
+
+        val notNullableArgumentType = argumentType.makeNotNullable()
+        val isApplicable = ArgumentTypeResolver.isSubtypeOfForArgumentType(notNullableArgumentType, parameterType)
+        return if (isApplicable) NULLABLE_ARGUMENT_TYPE_MISMATCH else null
     }
 
     private fun CallCandidateResolutionContext<*>.checkReceiverTypeError(): Unit = check {
@@ -559,7 +568,7 @@ class CandidateResolver(
                 }
                 if (!smartCastResult.isCorrect) {
                     // Error about unstable smart cast reported within checkAndRecordPossibleCast
-                    return OTHER_ERROR
+                    return UNSTABLE_SMARTCAST_FOR_RECEIVER_ERROR
                 }
             }
         }
