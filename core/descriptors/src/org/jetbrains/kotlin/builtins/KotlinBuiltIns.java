@@ -381,6 +381,20 @@ public abstract class KotlinBuiltIns {
         return DescriptorUtils.getParentOfType(descriptor, BuiltInsPackageFragment.class, false) != null;
     }
 
+    /**
+     * @return true if the containing package of the descriptor is "kotlin" or any subpackage of "kotlin"
+     */
+    public static boolean isUnderKotlinPackage(@NotNull DeclarationDescriptor descriptor) {
+        DeclarationDescriptor current = descriptor;
+        while (current != null) {
+            if (current instanceof PackageFragmentDescriptor) {
+                return ((PackageFragmentDescriptor) current).getFqName().startsWith(BUILT_INS_PACKAGE_NAME);
+            }
+            current = current.getContainingDeclaration();
+        }
+        return false;
+    }
+
     @NotNull
     public MemberScope getBuiltInsPackageScope() {
         return packageFragments.invoke().builtInsPackageFragment.getMemberScope();
@@ -1066,6 +1080,10 @@ public abstract class KotlinBuiltIns {
 
     public static boolean isIterableOrNullableIterable(@NotNull KotlinType type) {
         return isConstructedFromGivenClass(type, FQ_NAMES.iterable);
+    }
+
+    public static boolean isThrowableOrNullableThrowable(@NotNull KotlinType type) {
+        return isConstructedFromGivenClass(type, FQ_NAMES.throwable);
     }
 
     public static boolean isKClass(@NotNull ClassDescriptor descriptor) {
