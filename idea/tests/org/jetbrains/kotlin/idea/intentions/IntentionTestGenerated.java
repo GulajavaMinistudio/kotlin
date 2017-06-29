@@ -5725,6 +5725,12 @@ public class IntentionTestGenerated extends AbstractIntentionTest {
             String fileName = KotlinTestUtils.navigationMetadata("idea/testData/intentions/convertReceiverToParameter/validOverload.kt");
             doTest(fileName);
         }
+
+        @TestMetadata("varargs.kt")
+        public void testVarargs() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("idea/testData/intentions/convertReceiverToParameter/varargs.kt");
+            doTest(fileName);
+        }
     }
 
     @TestMetadata("idea/testData/intentions/convertReferenceToLambda")
@@ -13431,6 +13437,12 @@ public class IntentionTestGenerated extends AbstractIntentionTest {
     public static class RemoveUnnecessaryParentheses extends AbstractIntentionTest {
         public void testAllFilesPresentInRemoveUnnecessaryParentheses() throws Exception {
             KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("idea/testData/intentions/removeUnnecessaryParentheses"), Pattern.compile("^([\\w\\-_]+)\\.kt$"), TargetBackend.ANY, true);
+        }
+
+        @TestMetadata("callInsideCallWithLambdaOnly.kt")
+        public void testCallInsideCallWithLambdaOnly() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("idea/testData/intentions/removeUnnecessaryParentheses/callInsideCallWithLambdaOnly.kt");
+            doTest(fileName);
         }
 
         @TestMetadata("necessaryParentheses1.kt")
