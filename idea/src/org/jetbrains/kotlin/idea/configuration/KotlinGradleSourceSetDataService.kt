@@ -112,6 +112,8 @@ private fun configureFacetByGradleModule(
         ideModule: Module,
         modelsProvider: IdeModifiableModelsProvider
 ): KotlinFacet? {
+    if (!moduleNode.isResolved) return null
+
     if (!moduleNode.hasKotlinPlugin) {
         val facetModel = modelsProvider.getModifiableFacetModel(ideModule)
         val facet = facetModel.getFacetByType(KotlinFacetType.TYPE_ID)
@@ -139,7 +141,7 @@ private fun configureFacetByGradleModule(
         val defaultCompilerArguments = argsInfo.defaultArguments
         val dependencyClasspath = argsInfo.dependencyClasspath.map { PathUtil.toSystemIndependentName(it) }
         if (currentCompilerArguments.isNotEmpty()) {
-            parseCompilerArgumentsToFacet(currentCompilerArguments, defaultCompilerArguments, kotlinFacet)
+            parseCompilerArgumentsToFacet(currentCompilerArguments, defaultCompilerArguments, kotlinFacet, modelsProvider)
         }
         adjustClasspath(kotlinFacet, dependencyClasspath)
     }

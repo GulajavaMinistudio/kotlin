@@ -5018,6 +5018,12 @@ public class BlackBoxCodegenTestGenerated extends AbstractBlackBoxCodegenTest {
             doTest(fileName);
         }
 
+        @TestMetadata("coroutineToString.kt")
+        public void testCoroutineToString() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/coroutines/coroutineToString.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("createCoroutineSafe.kt")
         public void testCreateCoroutineSafe() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/coroutines/createCoroutineSafe.kt");
@@ -16226,6 +16232,12 @@ public class BlackBoxCodegenTestGenerated extends AbstractBlackBoxCodegenTest {
         @TestMetadata("kt1845.kt")
         public void testKt1845() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/regressions/kt1845.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("kt18779.kt")
+        public void testKt18779() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/regressions/kt18779.kt");
             doTest(fileName);
         }
 
