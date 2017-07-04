@@ -736,6 +736,30 @@ public class IrBlackBoxInlineCodegenTestGenerated extends AbstractIrBlackBoxInli
                 doTest(fileName);
             }
 
+            @TestMetadata("kt18728.kt")
+            public void testKt18728() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/boxInline/callableReference/bound/kt18728.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("kt18728_2.kt")
+            public void testKt18728_2() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/boxInline/callableReference/bound/kt18728_2.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("kt18728_3.kt")
+            public void testKt18728_3() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/boxInline/callableReference/bound/kt18728_3.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("kt18728_4.kt")
+            public void testKt18728_4() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/boxInline/callableReference/bound/kt18728_4.kt");
+                doTest(fileName);
+            }
+
             @TestMetadata("map.kt")
             public void testMap() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/boxInline/callableReference/bound/map.kt");
@@ -925,6 +949,18 @@ public class IrBlackBoxInlineCodegenTestGenerated extends AbstractIrBlackBoxInli
     @TestDataPath("$PROJECT_ROOT")
     @RunWith(JUnit3RunnerWithInners.class)
     public static class DefaultValues extends AbstractIrBlackBoxInlineCodegenTest {
+        @TestMetadata("33Parameters.kt")
+        public void test33Parameters() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/boxInline/defaultValues/33Parameters.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("33ParametersInConstructor.kt")
+        public void test33ParametersInConstructor() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/boxInline/defaultValues/33ParametersInConstructor.kt");
+            doTest(fileName);
+        }
+
         public void testAllFilesPresentInDefaultValues() throws Exception {
             KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/boxInline/defaultValues"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.ANY, true);
         }
@@ -1161,9 +1197,33 @@ public class IrBlackBoxInlineCodegenTestGenerated extends AbstractIrBlackBoxInli
                     doTest(fileName);
                 }
 
+                @TestMetadata("boundFunctionReferenceOnInt.kt")
+                public void testBoundFunctionReferenceOnInt() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/boxInline/defaultValues/lambdaInlining/callableReferences/boundFunctionReferenceOnInt.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("boundFunctionReferenceOnLong.kt")
+                public void testBoundFunctionReferenceOnLong() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/boxInline/defaultValues/lambdaInlining/callableReferences/boundFunctionReferenceOnLong.kt");
+                    doTest(fileName);
+                }
+
                 @TestMetadata("boundPropertyReference.kt")
                 public void testBoundPropertyReference() throws Exception {
                     String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/boxInline/defaultValues/lambdaInlining/callableReferences/boundPropertyReference.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("boundPropertyReferenceOnInt.kt")
+                public void testBoundPropertyReferenceOnInt() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/boxInline/defaultValues/lambdaInlining/callableReferences/boundPropertyReferenceOnInt.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("boundPropertyReferenceOnLong.kt")
+                public void testBoundPropertyReferenceOnLong() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/boxInline/defaultValues/lambdaInlining/callableReferences/boundPropertyReferenceOnLong.kt");
                     doTest(fileName);
                 }
 
@@ -1259,6 +1319,12 @@ public class IrBlackBoxInlineCodegenTestGenerated extends AbstractIrBlackBoxInli
 
             public void testAllFilesPresentInMaskElimination() throws Exception {
                 KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/boxInline/defaultValues/maskElimination"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.ANY, true);
+            }
+
+            @TestMetadata("kt18792.kt")
+            public void testKt18792() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/boxInline/defaultValues/maskElimination/kt18792.kt");
+                doTest(fileName);
             }
 
             @TestMetadata("simple.kt")

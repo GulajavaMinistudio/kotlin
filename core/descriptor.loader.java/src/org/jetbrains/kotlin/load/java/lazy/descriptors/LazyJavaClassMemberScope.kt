@@ -37,14 +37,13 @@ import org.jetbrains.kotlin.load.java.descriptors.JavaMethodDescriptor
 import org.jetbrains.kotlin.load.java.descriptors.JavaPropertyDescriptor
 import org.jetbrains.kotlin.load.java.descriptors.copyValueParameters
 import org.jetbrains.kotlin.load.java.lazy.LazyJavaResolverContext
-import org.jetbrains.kotlin.load.java.lazy.child
+import org.jetbrains.kotlin.load.java.lazy.childForMethod
 import org.jetbrains.kotlin.load.java.lazy.resolveAnnotations
 import org.jetbrains.kotlin.load.java.lazy.types.toAttributes
 import org.jetbrains.kotlin.load.java.structure.JavaArrayType
 import org.jetbrains.kotlin.load.java.structure.JavaClass
 import org.jetbrains.kotlin.load.java.structure.JavaConstructor
 import org.jetbrains.kotlin.load.java.structure.JavaMethod
-import org.jetbrains.kotlin.load.java.typeEnhancement.enhanceSignatures
 import org.jetbrains.kotlin.load.kotlin.computeJvmDescriptor
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.resolve.DescriptorFactory
@@ -86,7 +85,8 @@ class LazyJavaClassMemberScope(
             result.add(descriptor)
         }
 
-        enhanceSignatures(
+        c.components.signatureEnhancement.enhanceSignatures(
+                c,
                 result.ifEmpty { listOfNotNull(createDefaultConstructor()) }
         ).toList()
     }
@@ -425,7 +425,7 @@ class LazyJavaClassMemberScope(
         val getter = DescriptorFactory.createDefaultGetter(propertyDescriptor, Annotations.EMPTY)
         propertyDescriptor.initialize(getter, null)
 
-        val returnType = givenType ?: computeMethodReturnType(method, annotations, c.child(propertyDescriptor, method))
+        val returnType = givenType ?: computeMethodReturnType(method, c.childForMethod(propertyDescriptor, method))
         propertyDescriptor.setType(returnType, listOf(), getDispatchReceiverParameter(), null as KotlinType?)
         getter.initialize(returnType)
 
@@ -512,7 +512,7 @@ class LazyJavaClassMemberScope(
         )
 
 
-        val c = c.child(constructorDescriptor, constructor, typeParametersIndexOffset = classDescriptor.declaredTypeParameters.size)
+        val c = c.childForMethod(constructorDescriptor, constructor, typeParametersIndexOffset = classDescriptor.declaredTypeParameters.size)
         val valueParameters = resolveValueParameters(c, constructorDescriptor, constructor.valueParameters)
         val constructorTypeParameters =
                 classDescriptor.declaredTypeParameters +
@@ -561,7 +561,7 @@ class LazyJavaClassMemberScope(
         val methods = jClass.methods
         val result = ArrayList<ValueParameterDescriptor>(methods.size)
 
-        val attr = TypeUsage.MEMBER_SIGNATURE_INVARIANT.toAttributes(allowFlexible = false, isForAnnotationParameter = true)
+        val attr = TypeUsage.COMMON.toAttributes(isForAnnotationParameter = true)
 
         val (methodsNamedValue, otherMethods) = methods.
                 partition { it.name == JvmAnnotationNames.DEFAULT_ANNOTATION_MEMBER_NAME }
