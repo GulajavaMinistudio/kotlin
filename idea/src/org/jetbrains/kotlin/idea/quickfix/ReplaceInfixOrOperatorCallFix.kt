@@ -21,6 +21,7 @@ import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.diagnostics.Diagnostic
+import org.jetbrains.kotlin.diagnostics.Errors
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.intentions.OperatorToFunctionIntention
 import org.jetbrains.kotlin.lexer.KtTokens
@@ -92,23 +93,27 @@ class ReplaceInfixOrOperatorCallFix(
     companion object : KotlinSingleIntentionActionFactory() {
         override fun createAction(diagnostic: Diagnostic): IntentionAction? {
             val expression = diagnostic.psiElement
-            if (expression is KtArrayAccessExpression) {
+            if (expression is KtArrayAccessExpression && diagnostic.factory != Errors.UNSAFE_IMPLICIT_INVOKE_CALL) {
                 if (expression.arrayExpression == null) return null
                 return ReplaceInfixOrOperatorCallFix(expression, expression.shouldHaveNotNullType())
             }
             val parent = expression.parent
             return when (parent) {
                 is KtBinaryExpression -> {
-                    if (parent.left == null || parent.right == null) null
-                    else if (parent.operationToken == KtTokens.EQ) null
-                    else if (parent.operationToken in OperatorConventions.COMPARISON_OPERATIONS) null
-                    else ReplaceInfixOrOperatorCallFix(parent, parent.shouldHaveNotNullType())
+                    when {
+                        parent.left == null || parent.right == null -> null
+                        parent.operationToken == KtTokens.EQ -> null
+                        parent.operationToken in OperatorConventions.COMPARISON_OPERATIONS -> null
+                        else -> ReplaceInfixOrOperatorCallFix(parent, parent.shouldHaveNotNullType())
+                    }
                 }
                 is KtCallExpression -> {
-                    if (parent.calleeExpression == null) null
-                    else if (parent.parent is KtQualifiedExpression) null
-                    else if (parent.getResolvedCall(parent.analyze())?.getImplicitReceiverValue() != null) null
-                    else ReplaceInfixOrOperatorCallFix(parent, parent.shouldHaveNotNullType())
+                    when {
+                        parent.calleeExpression == null -> null
+                        parent.parent is KtQualifiedExpression -> null
+                        parent.getResolvedCall(parent.analyze())?.getImplicitReceiverValue() != null -> null
+                        else -> ReplaceInfixOrOperatorCallFix(parent, parent.shouldHaveNotNullType())
+                    }
                 }
                 else -> null
             }

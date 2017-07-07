@@ -30,9 +30,7 @@ import org.jetbrains.kotlin.kdoc.lexer.KDocTokens
 import org.jetbrains.kotlin.kdoc.parser.KDocElementTypes
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.lexer.KtTokens.*
-import org.jetbrains.kotlin.psi.KtBlockExpression
-import org.jetbrains.kotlin.psi.KtDeclaration
-import org.jetbrains.kotlin.psi.KtExpression
+import org.jetbrains.kotlin.psi.*
 import java.util.*
 
 private val QUALIFIED_OPERATION = TokenSet.create(DOT, SAFE_ACCESS)
@@ -94,10 +92,14 @@ abstract class KotlinCommonBlock(
                 // relative to it when it starts from new line (see Indent javadoc).
 
                 val operationBlock = nodeSubBlocks[operationBlockIndex]
+                val indent = if (settings.kotlinSettings.CONTINUATION_INDENT_FOR_CHAINED_CALLS)
+                    Indent.getContinuationWithoutFirstIndent()
+                else
+                    Indent.getNormalIndent()
                 val operationSyntheticBlock = SyntheticKotlinBlock(
                         (operationBlock as ASTBlock).node,
                         nodeSubBlocks.subList(operationBlockIndex, nodeSubBlocks.size),
-                        null, operationBlock.getIndent(), null, spacingBuilder) { createSyntheticSpacingNodeBlock(it) }
+                        null, indent, null, spacingBuilder) { createSyntheticSpacingNodeBlock(it) }
 
                 nodeSubBlocks = ArrayList<Block>(nodeSubBlocks.subList(0, operationBlockIndex))
                 nodeSubBlocks.add(operationSyntheticBlock)
@@ -268,7 +270,7 @@ abstract class KotlinCommonBlock(
 
 
     private fun buildSubBlock(child: ASTNode, alignmentStrategy: CommonAlignmentStrategy, wrappingStrategy: WrappingStrategy): Block {
-        val childWrap = wrappingStrategy.getWrap(child.elementType)
+        val childWrap = wrappingStrategy.getWrap(child)
 
         // Skip one sub-level for operators, so type of block node is an element type of operator
         if (child.elementType === KtNodeTypes.OPERATION_REFERENCE) {
@@ -327,12 +329,73 @@ abstract class KotlinCommonBlock(
                 if (parentElementType === KtNodeTypes.FUN ||
                     parentElementType === KtNodeTypes.PRIMARY_CONSTRUCTOR ||
                     parentElementType === KtNodeTypes.SECONDARY_CONSTRUCTOR) {
-                    return getWrappingStrategyForItemList(commonSettings.METHOD_PARAMETERS_WRAP, KtNodeTypes.VALUE_PARAMETER)
+                    val wrap = Wrap.createWrap(commonSettings.METHOD_PARAMETERS_WRAP, false)
+                    return object : WrappingStrategy {
+                        override fun getWrap(childElement: ASTNode): Wrap? {
+                            return if (childElement.elementType === KtNodeTypes.VALUE_PARAMETER && !childElement.startsWithAnnotation())
+                                wrap
+                            else
+                                null
+                        }
+                    }
                 }
             }
+
+            elementType === KtNodeTypes.SUPER_TYPE_LIST -> {
+                val wrap = Wrap.createWrap(commonSettings.EXTENDS_LIST_WRAP, false)
+                return object : WrappingStrategy {
+                    override fun getWrap(childElement: ASTNode): Wrap? =
+                        if (childElement.psi is KtSuperTypeListEntry) wrap else null
+                }
+            }
+
+            elementType === KtNodeTypes.MODIFIER_LIST ->
+                when (node.treeParent.psi) {
+                    is KtParameter ->
+                        return getWrappingStrategyForItemList(commonSettings.PARAMETER_ANNOTATION_WRAP,
+                                                              KtNodeTypes.ANNOTATION_ENTRY,
+                                                              !node.treeParent.isFirstParameter())
+                    is KtClassOrObject ->
+                        return getWrappingStrategyForItemList(commonSettings.CLASS_ANNOTATION_WRAP,
+                                                              KtNodeTypes.ANNOTATION_ENTRY)
+
+                    is KtNamedFunction ->
+                        return getWrappingStrategyForItemList(commonSettings.METHOD_ANNOTATION_WRAP,
+                                                              KtNodeTypes.ANNOTATION_ENTRY)
+                }
+
+            elementType === KtNodeTypes.VALUE_PARAMETER ->
+                return wrapAfterAnnotation(commonSettings.PARAMETER_ANNOTATION_WRAP)
+
+            node.psi is KtClassOrObject ->
+                return wrapAfterAnnotation(commonSettings.CLASS_ANNOTATION_WRAP)
+
+            node.psi is KtNamedFunction ->
+                return wrapAfterAnnotation(commonSettings.METHOD_ANNOTATION_WRAP)
         }
 
         return WrappingStrategy.NoWrapping
+    }
+}
+
+private fun ASTNode.startsWithAnnotation() = firstChildNode?.firstChildNode?.elementType == KtNodeTypes.ANNOTATION_ENTRY
+
+private fun ASTNode.isFirstParameter(): Boolean = treePrev.elementType == KtTokens.LPAR
+
+private fun wrapAfterAnnotation(wrapType: Int): WrappingStrategy {
+    return object : WrappingStrategy {
+        override fun getWrap(childElement: ASTNode): Wrap? {
+            var prevLeaf = childElement.treePrev
+            while (prevLeaf?.elementType == TokenType.WHITE_SPACE) {
+                prevLeaf = prevLeaf.treePrev
+            }
+            if (prevLeaf?.elementType == KtNodeTypes.MODIFIER_LIST) {
+                if (prevLeaf?.lastChildNode?.elementType == KtNodeTypes.ANNOTATION_ENTRY) {
+                    return Wrap.createWrap(wrapType, true)
+                }
+            }
+            return null
+        }
     }
 }
 
@@ -382,7 +445,14 @@ private val INDENT_RULES = arrayOf<NodeIndentStrategy>(
 
         strategy("Chained calls")
                 .within(KtNodeTypes.DOT_QUALIFIED_EXPRESSION, KtNodeTypes.SAFE_ACCESS_EXPRESSION)
-                .set(Indent.getContinuationWithoutFirstIndent(false)),
+                .notForType(KtTokens.DOT, KtTokens.SAFE_ACCESS)
+                .forElement { it.treeParent.firstChildNode != it }
+                .set { settings ->
+                    if (settings.kotlinSettings.CONTINUATION_INDENT_FOR_CHAINED_CALLS)
+                        Indent.getContinuationWithoutFirstIndent()
+                    else
+                        Indent.getNormalIndent()
+                },
 
         strategy("Colon of delegation list")
                 .within(KtNodeTypes.CLASS, KtNodeTypes.OBJECT_DECLARATION)
@@ -482,11 +552,11 @@ private fun getPrevWithoutWhitespaceAndComments(pNode: ASTNode?): ASTNode? {
     return node
 }
 
-private fun getWrappingStrategyForItemList(wrapType: Int, itemType: IElementType): WrappingStrategy {
-    val itemWrap = Wrap.createWrap(wrapType, false)
+private fun getWrappingStrategyForItemList(wrapType: Int, itemType: IElementType, wrapFirstElement: Boolean = false): WrappingStrategy {
+    val itemWrap = Wrap.createWrap(wrapType, wrapFirstElement)
     return object : WrappingStrategy {
-        override fun getWrap(childElementType: IElementType): Wrap? {
-            return if (childElementType === itemType) itemWrap else null
+        override fun getWrap(childElement: ASTNode): Wrap? {
+            return if (childElement.elementType === itemType) itemWrap else null
         }
     }
 }

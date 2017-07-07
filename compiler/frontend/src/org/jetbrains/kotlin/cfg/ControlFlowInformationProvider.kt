@@ -1119,23 +1119,16 @@ class ControlFlowInformationProvider private constructor(
         }
 
         private fun combineKinds(kind: TailRecursionKind, existingKind: TailRecursionKind?): TailRecursionKind {
-            val resultingKind: TailRecursionKind
-            if (existingKind == null || existingKind == kind) {
-                resultingKind = kind
+            return if (existingKind == null || existingKind == kind) {
+                kind
             }
             else {
-                if (check(kind, existingKind, IN_TRY, TAIL_CALL)) {
-                    resultingKind = IN_TRY
-                }
-                else if (check(kind, existingKind, IN_TRY, NON_TAIL)) {
-                    resultingKind = IN_TRY
-                }
-                else {
-                    // TAIL_CALL, NON_TAIL
-                    resultingKind = NON_TAIL
+                when {
+                    check(kind, existingKind, IN_TRY, TAIL_CALL) -> IN_TRY
+                    check(kind, existingKind, IN_TRY, NON_TAIL) -> IN_TRY
+                    else -> NON_TAIL // TAIL_CALL, NON_TAIL
                 }
             }
-            return resultingKind
         }
 
         private fun check(a: Any, b: Any, x: Any, y: Any) = a === x && b === y || a === y && b === x

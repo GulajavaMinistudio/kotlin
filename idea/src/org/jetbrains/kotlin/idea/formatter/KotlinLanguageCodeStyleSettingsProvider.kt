@@ -30,11 +30,11 @@ class KotlinLanguageCodeStyleSettingsProvider : LanguageCodeStyleSettingsProvide
     override fun getCodeSample(settingsType: LanguageCodeStyleSettingsProvider.SettingsType): String = when (settingsType) {
         LanguageCodeStyleSettingsProvider.SettingsType.WRAPPING_AND_BRACES_SETTINGS ->
             """
-               public class ThisIsASampleClass {
+               @Deprecated("Foo") public class ThisIsASampleClass : Comparable<*>, Appendable {
                    val test =
                        12
 
-                   fun foo1(i1: Int, i2: Int, i3: Int) : Int {
+                   @Deprecated("Foo") fun foo1(i1: Int, i2: Int, i3: Int) : Int {
                        when (i1) {
                            is Number -> 0
                            else -> 1
@@ -47,7 +47,7 @@ class KotlinLanguageCodeStyleSettingsProvider : LanguageCodeStyleSettingsProvide
                        }        catch (e: Exception) {            return 0        }        finally {           if (true) {               return 1           }           else {               return 2           }        }    }
                    private val f = {(a: Int)->a*2}
 
-                   fun longMethod(param1: Int,
+                   fun longMethod(@Named("param1") param1: Int,
                     param2: String) {
                    }
                }
@@ -75,6 +75,24 @@ class KotlinLanguageCodeStyleSettingsProvider : LanguageCodeStyleSettingsProvide
 
 
                            field1
+                       }
+
+                       when(field1) {
+                           1 -> println("1")
+                           2 -> println("2")
+                           3 ->
+                                println("3" +
+                                     "4")
+                       }
+
+                       when(field2) {
+                           1 -> {
+                               println("1")
+                           }
+
+                           2 -> {
+                               println("2")
+                           }
                        }
                    }
 
@@ -125,6 +143,8 @@ class KotlinLanguageCodeStyleSettingsProvider : LanguageCodeStyleSettingsProvide
                            foo: String,
                            bar: String
                        ) {
+                           foo
+                               .length
                        }
 
                        fun expressionBodyMethod() =
@@ -215,6 +235,10 @@ class KotlinLanguageCodeStyleSettingsProvider : LanguageCodeStyleSettingsProvide
                         "FINALLY_ON_NEW_LINE",
                         "CALL_PARAMETERS_WRAP",
                         "METHOD_PARAMETERS_WRAP",
+                        "EXTENDS_LIST_WRAP",
+                        "METHOD_ANNOTATION_WRAP",
+                        "CLASS_ANNOTATION_WRAP",
+                        "PARAMETER_ANNOTATION_WRAP",
                         "METHOD_PARAMETERS_LPAREN_ON_NEXT_LINE",
                         "METHOD_PARAMETERS_RPAREN_ON_NEXT_LINE",
                         "CALL_PARAMETERS_LPAREN_ON_NEXT_LINE",
@@ -229,10 +253,17 @@ class KotlinLanguageCodeStyleSettingsProvider : LanguageCodeStyleSettingsProvide
                                 "Put left brace on new line",
                                  CodeStyleSettingsCustomizable.WRAPPING_BRACES)
             }
-            LanguageCodeStyleSettingsProvider.SettingsType.BLANK_LINES_SETTINGS -> consumer.showStandardOptions(
-                    "KEEP_BLANK_LINES_IN_CODE",
-                    "KEEP_BLANK_LINES_IN_DECLARATIONS"
-            )
+            LanguageCodeStyleSettingsProvider.SettingsType.BLANK_LINES_SETTINGS -> {
+                consumer.showStandardOptions(
+                        "KEEP_BLANK_LINES_IN_CODE",
+                        "KEEP_BLANK_LINES_IN_DECLARATIONS",
+                        "KEEP_BLANK_LINES_BEFORE_RBRACE",
+                        "BLANK_LINES_AFTER_CLASS_HEADER"
+                )
+                showCustomOption(KotlinCodeStyleSettings::BLANK_LINES_AROUND_BLOCK_WHEN_BRANCHES,
+                                 "Around 'when' branches with {}",
+                                 CodeStyleSettingsCustomizable.BLANK_LINES)
+            }
             else -> consumer.showStandardOptions()
         }
     }
