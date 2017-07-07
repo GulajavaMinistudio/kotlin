@@ -17,10 +17,12 @@
 package org.jetbrains.kotlin.cli.jvm.compiler
 
 import com.intellij.openapi.vfs.StandardFileSystems
+import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.psi.PsiJavaModule
 import com.intellij.psi.PsiManager
+import com.intellij.psi.impl.light.LightJavaModule
 import org.jetbrains.kotlin.cli.common.messages.CompilerMessageLocation
 import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity
 import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity.*
@@ -38,6 +40,11 @@ import org.jetbrains.kotlin.name.isValidJavaFqName
 import org.jetbrains.kotlin.resolve.jvm.modules.JavaModule
 import org.jetbrains.kotlin.resolve.jvm.modules.JavaModuleGraph
 import org.jetbrains.kotlin.resolve.jvm.modules.JavaModuleInfo
+import java.io.File
+import java.io.IOException
+import java.util.jar.Attributes
+import java.util.jar.Manifest
+import kotlin.LazyThreadSafetyMode.NONE
 
 internal class ClasspathRootsResolver(
         private val psiManager: PsiManager,
@@ -50,7 +57,7 @@ internal class ClasspathRootsResolver(
 
     data class RootsAndModules(val roots: List<JavaRoot>, val modules: List<JavaModule>)
 
-    fun convertClasspathRoots(contentRoots: Iterable<ContentRoot>): RootsAndModules {
+    fun convertClasspathRoots(contentRoots: List<ContentRoot>): RootsAndModules {
         val result = mutableListOf<JavaRoot>()
 
         val modules = ArrayList<JavaModule>()
@@ -78,11 +85,8 @@ internal class ClasspathRootsResolver(
                     result += JavaRoot(root, JavaRoot.RootType.BINARY)
                 }
                 is JvmModulePathRoot -> {
-                    // TODO: sanitize the automatic module name exactly as in javac
-                    // TODO: read Automatic-Module-Name manifest entry
-                    val module = modularBinaryRoot(root, automaticModuleName = { contentRoot.file.name })
+                    val module = modularBinaryRoot(root, contentRoot.file)
                     if (module != null) {
-                        // TODO: report something in case of several modules with the same name?
                         modules += module
                     }
                 }
@@ -108,14 +112,46 @@ internal class ClasspathRootsResolver(
         return JavaModule.Explicit(JavaModuleInfo.create(psiJavaModule), root, moduleInfoFile, isBinary = false)
     }
 
-    private fun modularBinaryRoot(root: VirtualFile, automaticModuleName: () -> String): JavaModule? {
-        val moduleInfoFile = root.findChild(PsiJavaModule.MODULE_INFO_CLS_FILE)
-        return if (moduleInfoFile != null) {
+    private fun modularBinaryRoot(root: VirtualFile, originalFile: File): JavaModule? {
+        val isJar = root.fileSystem.protocol == StandardFileSystems.JAR_PROTOCOL
+        val manifest: Attributes? by lazy(NONE) { readManifestAttributes(root) }
+
+        val moduleInfoFile =
+                root.findChild(PsiJavaModule.MODULE_INFO_CLS_FILE)
+                ?: root.takeIf { isJar }?.findFileByRelativePath(MULTI_RELEASE_MODULE_INFO_CLS_FILE)?.takeIf {
+                    manifest?.getValue(IS_MULTI_RELEASE)?.equals("true", ignoreCase = true) == true
+                }
+
+        if (moduleInfoFile != null) {
             val moduleInfo = JavaModuleInfo.read(moduleInfoFile) ?: return null
-            JavaModule.Explicit(moduleInfo, root, moduleInfoFile, isBinary = true)
+            return JavaModule.Explicit(moduleInfo, root, moduleInfoFile, isBinary = true)
         }
-        else {
-            JavaModule.Automatic(automaticModuleName(), root)
+
+        // Only .jar files can be automatic modules
+        if (isJar) {
+            val automaticModuleName = manifest?.getValue(AUTOMATIC_MODULE_NAME)
+            if (automaticModuleName != null) {
+                return JavaModule.Automatic(automaticModuleName, root)
+            }
+
+            val moduleName = LightJavaModule.moduleName(originalFile.nameWithoutExtension)
+            if (moduleName.isEmpty()) {
+                report(ERROR, "Cannot infer automatic module name for the file", VfsUtilCore.getVirtualFileForJar(root) ?: root)
+                return null
+            }
+            return JavaModule.Automatic(moduleName, root)
+        }
+
+        return null
+    }
+
+    private fun readManifestAttributes(jarRoot: VirtualFile): Attributes? {
+        val manifestFile = jarRoot.findChild("META-INF")?.findChild("MANIFEST.MF")
+        return try {
+            manifestFile?.inputStream?.let(::Manifest)?.mainAttributes
+        }
+        catch (e: IOException) {
+            null
         }
     }
 
@@ -129,8 +165,16 @@ internal class ClasspathRootsResolver(
         }
 
         for (module in modules) {
-            // TODO: report a diagnostic if a module with this name was already added
-            javaModuleFinder.addUserModule(module)
+            val existing = javaModuleFinder.findModule(module.name)
+            if (existing == null) {
+                javaModuleFinder.addUserModule(module)
+            }
+            else if (module.moduleRoot != existing.moduleRoot) {
+                val jar = VfsUtilCore.getVirtualFileForJar(module.moduleRoot) ?: module.moduleRoot
+                val existingPath = (VfsUtilCore.getVirtualFileForJar(existing.moduleRoot) ?: existing.moduleRoot).path
+                report(STRONG_WARNING, "The root is ignored because a module with the same name '${module.name}' " +
+                                       "has been found earlier on the module path at: $existingPath", jar)
+            }
         }
 
         if (javaModuleFinder.allObservableModules.none()) return
@@ -147,10 +191,19 @@ internal class ClasspathRootsResolver(
             else -> computeDefaultRootModules() + additionalModules
         }
 
-        // TODO: if at least one automatic module is added, add all automatic modules as per java.lang.module javadoc
-        val allDependencies = javaModuleGraph.getAllDependencies(rootModules).also { loadedModules ->
-            report(LOGGING, "Loading modules: $loadedModules")
+        val allDependencies = javaModuleGraph.getAllDependencies(rootModules)
+        if (allDependencies.any { moduleName -> javaModuleFinder.findModule(moduleName) is JavaModule.Automatic }) {
+            // According to java.lang.module javadoc, if at least one automatic module is added to the module graph,
+            // all observable automatic modules should be added.
+            // There are no automatic modules in the JDK, so we select all automatic modules out of user modules
+            for (module in modules) {
+                if (module is JavaModule.Automatic) {
+                    allDependencies += module.name
+                }
+            }
         }
+
+        report(LOGGING, "Loading modules: $allDependencies")
 
         for (moduleName in allDependencies) {
             val module = javaModuleFinder.findModule(moduleName)
@@ -208,5 +261,11 @@ internal class ClasspathRootsResolver(
                 severity, message,
                 if (file == null) null else CompilerMessageLocation.create(MessageUtil.virtualFileToPath(file))
         )
+    }
+
+    private companion object {
+        const val MULTI_RELEASE_MODULE_INFO_CLS_FILE = "META-INF/versions/9/${PsiJavaModule.MODULE_INFO_CLS_FILE}"
+        const val AUTOMATIC_MODULE_NAME = "Automatic-Module-Name"
+        const val IS_MULTI_RELEASE = "Multi-Release"
     }
 }

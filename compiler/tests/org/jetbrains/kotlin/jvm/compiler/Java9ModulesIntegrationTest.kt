@@ -16,8 +16,10 @@
 
 package org.jetbrains.kotlin.jvm.compiler
 
+import com.intellij.openapi.util.io.FileUtil
 import org.jetbrains.kotlin.test.KotlinTestUtils
 import java.io.File
+import java.util.jar.Manifest
 
 class Java9ModulesIntegrationTest : AbstractKotlinCompilerIntegrationTest() {
     override val testDataPath: String
@@ -26,7 +28,8 @@ class Java9ModulesIntegrationTest : AbstractKotlinCompilerIntegrationTest() {
     private fun module(
             name: String,
             modulePath: List<File> = emptyList(),
-            addModules: List<String> = emptyList()
+            addModules: List<String> = emptyList(),
+            manifest: Manifest? = null
     ): File {
         val jdk9Home = KotlinTestUtils.getJdk9HomeIfPossible() ?: return File("<test-skipped>")
 
@@ -54,13 +57,47 @@ class Java9ModulesIntegrationTest : AbstractKotlinCompilerIntegrationTest() {
                     }
                     KotlinTestUtils.compileJavaFilesExternallyWithJava9(javaFiles, javaOptions)
                 },
-                checkKotlinOutput = checkKotlinOutput(name)
+                checkKotlinOutput = checkKotlinOutput(name),
+                manifest = manifest
         )
     }
 
     private fun checkKotlinOutput(moduleName: String): (String) -> Unit = { actual ->
         KotlinTestUtils.assertEqualsToFile(File(testDataDirectory, "$moduleName.txt"), actual)
     }
+
+    private fun createMultiReleaseJar(jdk9Home: File, destination: File, mainRoot: File, java9Root: File): File {
+        val command = listOf<String>(
+                File(jdk9Home, "bin/jar").path,
+                "--create", "--file=$destination",
+                "-C", mainRoot.path, ".",
+                "--release", "9",
+                "-C", java9Root.path, "."
+        )
+
+        val process = ProcessBuilder().command(command).inheritIO().start()
+        process.waitFor()
+        assertEquals("'jar' did not finish successfully", 0, process.exitValue())
+
+        return destination
+    }
+
+    private fun java9BuildVersion(): Int? {
+        val jdk9Home = KotlinTestUtils.getJdk9HomeIfPossible() ?: return null
+        val process = ProcessBuilder().command(File(jdk9Home, "bin/java").path, "--version").start()
+        val lines = process.inputStream.use {
+            it.reader().readLines().also {
+                process.waitFor()
+            }
+        }
+        if (process.exitValue() != 0) return null
+        val line = lines.getOrNull(1) ?: return null
+
+        val result = ".*\\(build 9(-ea)?\\+(\\d+)\\)".toRegex().matchEntire(line)?.groupValues ?: return null
+        return result[2].toIntOrNull()
+    }
+
+    // -------------------------------------------------------
 
     fun testSimple() {
         val a = module("moduleA")
@@ -148,5 +185,64 @@ class Java9ModulesIntegrationTest : AbstractKotlinCompilerIntegrationTest() {
                 compileJava = { _, _, _ -> error("No .java files in moduleB in this test") },
                 checkKotlinOutput = checkKotlinOutput("moduleB")
         )
+    }
+
+    fun testMultiReleaseLibrary() {
+        val jdk9Home = KotlinTestUtils.getJdk9HomeIfPossible() ?: return
+
+        val librarySrc = FileUtil.findFilesByMask(JAVA_FILES, File(testDataDirectory, "library"))
+        val libraryOut = File(tmpdir, "out")
+        KotlinTestUtils.compileJavaFilesExternallyWithJava9(librarySrc, listOf("-d", libraryOut.path))
+
+        val libraryOut9 = File(tmpdir, "out9")
+        libraryOut9.mkdirs()
+        File(libraryOut, "module-info.class").renameTo(File(libraryOut9, "module-info.class"))
+
+        // Use the name other from 'library' to prevent it from being loaded as an automatic module if module-info.class is not found
+        val libraryJar = createMultiReleaseJar(jdk9Home, File(tmpdir, "multi-release-library.jar"), libraryOut, libraryOut9)
+
+        module("main", listOf(libraryJar))
+    }
+
+    fun testAutomaticModuleNames() {
+        // Automatic module names are computed differently starting from some build of 9-ea
+        // TODO: remove this as soon as Java 9 is released and installed on all TeamCity agents
+        val version = java9BuildVersion()
+        if (version == null || version < 176) {
+            System.err.println("Java 9 build is not recognized or is too old (build $version), skipping the test")
+            return
+        }
+
+        // This name should be sanitized to just "auto.mat1c.m0d.ule"
+        val m1 = File(tmpdir, ".auto--mat1c-_-!@#\$%^&*()m0d_ule--1.0..0-release..jar")
+        module("automatic-module1").renameTo(m1)
+
+        val m2 = module("automatic-module2", manifest = Manifest().apply {
+            mainAttributes.putValue("Manifest-Version", "1.0")
+            mainAttributes.putValue("Automatic-Module-Name", "automodule2")
+        })
+
+        module("main", listOf(m1, m2))
+    }
+
+    fun testUnnamedAgainstSeveralAutomatic() {
+        val a = module("autoA")
+        val b = module("autoB")
+        // Even though we only add autoA to the module graph, autoB should be added as well because autoA, being automatic,
+        // transitively requires every other automatic module, and in particular, autoB.
+        // Furthermore, because autoB is automatic, main should read autoB
+        module("main", listOf(a, b), addModules = listOf("autoA"))
+    }
+
+    fun testNamedAgainstSeveralAutomatic() {
+        val a = module("autoA")
+        val b = module("autoB")
+        module("main", listOf(a, b))
+    }
+
+    fun testSeveralModulesWithTheSameName() {
+        val d1 = module("dependency1")
+        val d2 = module("dependency2")
+        module("main", listOf(d1, d2))
     }
 }

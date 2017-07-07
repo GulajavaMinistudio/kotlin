@@ -23,6 +23,7 @@ import com.intellij.openapi.module.Module
 import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.roots.DependencyScope
 import com.intellij.openapi.util.Computable
 import com.intellij.psi.search.FileTypeIndex
 import com.intellij.psi.search.GlobalSearchScope
@@ -65,7 +66,27 @@ val EAP_12_REPOSITORY = RepositoryDescription(
         "https://bintray.com/kotlin/kotlin-eap-1.2/kotlin/",
         isSnapshot = false)
 
-fun RepositoryDescription.toRepositorySnippet() = "maven {\nurl '$url'\n}"
+val MAVEN_CENTRAL = "mavenCentral()"
+
+val JCENTER = "jcenter()"
+
+val KOTLIN_GROUP_ID = "org.jetbrains.kotlin"
+
+fun isRepositoryConfigured(repositoriesBlockText: String): Boolean =
+        repositoriesBlockText.contains(MAVEN_CENTRAL) || repositoriesBlockText.contains(JCENTER)
+
+fun DependencyScope.toGradleCompileScope(isAndroidModule: Boolean) = when (this) {
+    DependencyScope.COMPILE -> "compile"
+    // TODO: We should add testCompile or androidTestCompile
+    DependencyScope.TEST -> if (isAndroidModule) "compile" else "testCompile"
+    DependencyScope.RUNTIME -> "runtime"
+    DependencyScope.PROVIDED -> "compile"
+    else -> "compile"
+}
+
+fun RepositoryDescription.toGroovyRepositorySnippet() = "maven {\nurl '$url'\n}"
+
+fun RepositoryDescription.toKotlinRepositorySnippet() = "maven {\nsetUrl(\"$url\")\n}"
 
 fun getRepositoryForVersion(version: String): RepositoryDescription? = when {
     isSnapshot(version) -> SNAPSHOT_REPOSITORY
@@ -145,7 +166,7 @@ fun getConfiguratorByName(name: String): KotlinProjectConfigurator? {
 
 fun allConfigurators() = Extensions.getExtensions(KotlinProjectConfigurator.EP_NAME)
 
-fun getNonConfiguredModules(project: Project, configurator: KotlinProjectConfigurator): List<Module> {
+fun getCanBeConfiguredModules(project: Project, configurator: KotlinProjectConfigurator): List<Module> {
     return project.allModules()
             .filter { module -> configurator.canConfigure(module) }
             .excludeSourceRootModules()
@@ -185,12 +206,12 @@ val Module.externalProjectId: String?
 val Module.externalProjectPath: String?
     get() = ExternalSystemApiUtil.getExternalProjectPath(this)
 
-fun getNonConfiguredModulesWithKotlinFiles(project: Project, configurator: KotlinProjectConfigurator): List<Module> {
+fun getCanBeConfiguredModulesWithKotlinFiles(project: Project, configurator: KotlinProjectConfigurator): List<Module> {
     val modules = getConfigurableModulesWithKotlinFiles(project)
     return modules.filter { module -> configurator.getStatus(module) == ConfigureKotlinStatus.CAN_BE_CONFIGURED }
 }
 
-fun getNonConfiguredModulesWithKotlinFiles(project: Project, excludeModules: Collection<Module> = emptyList()): Collection<Module> {
+fun getCanBeConfiguredModulesWithKotlinFiles(project: Project, excludeModules: Collection<Module> = emptyList()): Collection<Module> {
     val modulesWithKotlinFiles = getConfigurableModulesWithKotlinFiles(project) - excludeModules
     val configurators = allConfigurators()
     return modulesWithKotlinFiles.filter { module ->

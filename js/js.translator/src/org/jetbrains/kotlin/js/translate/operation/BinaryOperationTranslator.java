@@ -154,6 +154,7 @@ public final class BinaryOperationTranslator extends AbstractTranslator {
             JsExpression testExpression = TranslationUtils.isNullCheck(leftExpression);
             ifStatement = JsAstUtils.newJsIf(testExpression, rightBlock);
         }
+        ifStatement.setSource(expression);
         context().addStatementToCurrentBlock(ifStatement);
         return result;
     }
@@ -212,7 +213,7 @@ public final class BinaryOperationTranslator extends AbstractTranslator {
             if (rightExpression instanceof JsNameRef) {
                 result = rightExpression; // Reuse tmp variable
             } else {
-                result = context().declareTemporary(null).reference();
+                result = context().declareTemporary(null, rightKtExpression).reference();
                 JsExpression rightAssignment = JsAstUtils.assignment(result.deepCopy(), rightExpression).source(rightKtExpression);
                 rightBlock.getStatements().add(JsAstUtils.asSyntheticStatement(rightAssignment));
             }
