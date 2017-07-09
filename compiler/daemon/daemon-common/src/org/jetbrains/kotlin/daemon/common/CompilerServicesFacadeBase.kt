@@ -16,8 +16,6 @@
 
 package org.jetbrains.kotlin.daemon.common
 
-import org.jetbrains.kotlin.cli.common.messages.CompilerMessageLocation
-import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity
 import java.io.Serializable
 import java.rmi.Remote
 import java.rmi.RemoteException
@@ -27,7 +25,7 @@ interface CompilerServicesFacadeBase : Remote {
      * Reports different kind of diagnostic messages from compile daemon to compile daemon clients (jps, gradle, ...)
      */
     @Throws(RemoteException::class)
-    fun report(category: Int, severity: Int, message: String?, attachment: Serializable?)
+    fun report(category: Int, severity: Int, message: String?, attachment: Serializable?): Void?
 }
 
 enum class ReportCategory(val code: Int) {
