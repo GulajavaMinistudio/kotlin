@@ -39,11 +39,12 @@ import org.jetbrains.kotlin.codegen.coroutines.CoroutineCodegenForLambda;
 import org.jetbrains.kotlin.codegen.coroutines.CoroutineCodegenUtilKt;
 import org.jetbrains.kotlin.codegen.coroutines.ResolvedCallWithRealDescriptor;
 import org.jetbrains.kotlin.codegen.extensions.ExpressionCodegenExtension;
-import org.jetbrains.kotlin.codegen.forLoop.AbstractForLoopGenerator;
-import org.jetbrains.kotlin.codegen.forLoop.ForLoopGeneratorsKt;
 import org.jetbrains.kotlin.codegen.inline.*;
 import org.jetbrains.kotlin.codegen.intrinsics.*;
 import org.jetbrains.kotlin.codegen.pseudoInsns.PseudoInsnsKt;
+import org.jetbrains.kotlin.codegen.range.RangeValue;
+import org.jetbrains.kotlin.codegen.range.RangeValuesKt;
+import org.jetbrains.kotlin.codegen.range.forLoop.ForLoopGenerator;
 import org.jetbrains.kotlin.codegen.signature.BothSignatureWriter;
 import org.jetbrains.kotlin.codegen.signature.JvmSignatureWriter;
 import org.jetbrains.kotlin.codegen.state.GenerationState;
@@ -599,7 +600,10 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
     }
 
     private void generateFor(@NotNull KtForExpression forExpression) {
-        generateForLoop(ForLoopGeneratorsKt.getForLoopGenerator(this, forExpression));
+        KtExpression range = forExpression.getLoopRange();
+        assert range != null : "No loop range in for expression";
+        RangeValue rangeValue = RangeValuesKt.createRangeValueForExpression(this, range);
+        generateForLoop(rangeValue.createForLoopGenerator(this, forExpression));
     }
 
     @NotNull
@@ -623,7 +627,7 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
         return context.getContextKind();
     }
 
-    private void generateForLoop(AbstractForLoopGenerator generator) {
+    private void generateForLoop(ForLoopGenerator generator) {
         Label loopExit = new Label();
         Label loopEntry = new Label();
         Label continueLabel = new Label();
@@ -827,24 +831,29 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
     public StackValue visitStringTemplateExpression(@NotNull KtStringTemplateExpression expression, StackValue receiver) {
         List<StringTemplateEntry> entries = preprocessStringTemplate(expression);
 
-        if (entries.size() == 1) {
+        Type type = expressionType(expression);
+
+        if (entries.size() == 0) {
+            return StackValue.constant("", type);
+        }
+        else if (entries.size() == 1) {
             StringTemplateEntry entry = entries.get(0);
             if (entry instanceof StringTemplateEntry.Expression) {
                 KtExpression expr = ((StringTemplateEntry.Expression) entry).expression;
-                return genToString(gen(expr), expressionType(expr));
+                return genToString(gen(expr), type);
             }
             else {
-                Type type = expressionType(expression);
                 return StackValue.constant(((StringTemplateEntry.Constant) entry).value, type);
             }
         }
-
-        return StackValue.operation(JAVA_STRING_TYPE, v -> {
-            genStringBuilderConstructor(v);
-            invokeAppendForEntries(v, entries);
-            v.invokevirtual("java/lang/StringBuilder", "toString", "()Ljava/lang/String;", false);
-            return Unit.INSTANCE;
-        });
+        else {
+            return StackValue.operation(type, v -> {
+                genStringBuilderConstructor(v);
+                invokeAppendForEntries(v, entries);
+                v.invokevirtual("java/lang/StringBuilder", "toString", "()Ljava/lang/String;", false);
+                return Unit.INSTANCE;
+            });
+        }
     }
 
     private void invokeAppendForEntries(InstructionAdapter v, List<StringTemplateEntry> entries) {
@@ -1604,10 +1613,11 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
         // If it does not end with return we should return something
         // because if we don't there can be VerifyError (specific cases with Nothing-typed expressions)
         if (!endsWithReturn(expr)) {
-            markLineNumber(expr, true);
-
             if (isLambdaVoidBody(expr, typeForExpression)) {
                 markLineNumber((KtFunctionLiteral) expr.getParent(), true);
+            }
+            else {
+                markLineNumber(expr, true);
             }
 
             if (typeForExpression.getSort() == Type.VOID) {
@@ -1772,31 +1782,15 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
             return lookupCapturedValueInConstructorParameters(descriptor);
         }
 
-        return lookupValuaAndLocalVariableMetadata(descriptor, StackValue.LOCAL_0, state, false, context, this);
-    }
-
-    @Nullable
-    static StackValue lookupValuaAndLocalVariableMetadata(
-            @NotNull DeclarationDescriptor descriptor,
-            @NotNull StackValue prefix,
-            @NotNull GenerationState state,
-            boolean ignoreNoOuter,
-            @NotNull CodegenContext context,
-            @Nullable ExpressionCodegen codegen
-    ) {
-        StackValue value = context.lookupInContext(descriptor, prefix, state, ignoreNoOuter);
-        if(!isDelegatedLocalVariable(descriptor) || value == null) {
-            return value;
+        StackValue value = context.lookupInContext(descriptor, StackValue.LOCAL_0, state, false);
+        if (isDelegatedLocalVariable(descriptor) && value != null) {
+            VariableDescriptor metadata = getDelegatedLocalVariableMetadata((VariableDescriptor) descriptor, bindingContext);
+            StackValue metadataValue = context.lookupInContext(metadata, StackValue.LOCAL_0, state, false);
+            assert metadataValue != null : "Metadata stack value should be non-null for local delegated property: " + descriptor;
+            return delegatedVariableValue(value, metadataValue, (VariableDescriptorWithAccessors) descriptor, typeMapper);
         }
 
-
-        VariableDescriptor metadata = getDelegatedLocalVariableMetadata((VariableDescriptor) descriptor, state.getBindingContext());
-        StackValue metadataValue = context.lookupInContext(metadata, prefix, state, ignoreNoOuter);
-        assert metadataValue != null : "Metadata stack value should be non-null for local delegated property";
-        //required for ImplementationBodyCodegen.lookupConstructorExpressionsInClosureIfPresent
-        if (codegen == null) return null;
-        return codegen.delegatedVariableValue(value, metadataValue, (VariableDescriptorWithAccessors) descriptor,
-                                              state.getTypeMapper());
+        return value;
     }
 
     @Nullable
@@ -1807,7 +1801,7 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
         int parameterOffsetInConstructor = context.closure.getCapturedParameterOffsetInConstructor(descriptor);
         // when captured parameter is singleton
         // see compiler/testData/codegen/box/objects/objectInLocalAnonymousObject.kt (fun local() captured in A)
-        if (parameterOffsetInConstructor == -1) return adjustVariableValue(parentResult , descriptor);
+        if (parameterOffsetInConstructor == -1) return adjustVariableValue(parentResult, descriptor);
 
         assert parentResult instanceof StackValue.Field || parentResult instanceof StackValue.FieldForSharedVar
                 : "Part of closure should be either Field or FieldForSharedVar";
@@ -2044,32 +2038,27 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
             return genClosure((KtNamedFunction) expression, samType);
         }
 
-        Type asmType =
-                state.getSamWrapperClasses().getSamWrapperClass(samType, expression.getContainingKtFile(), this);
+        Type asmType = state.getSamWrapperClasses().getSamWrapperClass(samType, expression.getContainingKtFile(), this);
 
         return StackValue.operation(asmType, v -> {
-            v.anew(asmType);
-            v.dup();
+            Label afterAll = new Label();
 
             Type functionType = typeMapper.mapType(samType.getKotlinFunctionType());
             expression.accept(visitor, StackValue.none()).put(functionType, v);
 
-            Label ifNonNull = new Label();
-            Label afterAll = new Label();
-
             v.dup();
-            v.ifnonnull(ifNonNull);
+            v.ifnull(afterAll);
 
-            // if null: pop function value and wrapper objects, put null
-            v.pop();
-            v.pop2();
-            v.aconst(null);
-            v.goTo(afterAll);
-
-            v.mark(ifNonNull);
+            int tmp = myFrameMap.enterTemp(functionType);
+            v.store(tmp, functionType);
+            v.anew(asmType);
+            v.dup();
+            v.load(tmp, functionType);
             v.invokespecial(asmType.getInternalName(), "<init>", Type.getMethodDescriptor(Type.VOID_TYPE, functionType), false);
+            myFrameMap.leaveTemp(functionType);
 
             v.mark(afterAll);
+
             return null;
         });
     }
@@ -2866,76 +2855,9 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
 
     private StackValue generateIn(StackValue leftValue, KtExpression rangeExpression, KtSimpleNameExpression operationReference) {
         KtExpression deparenthesized = KtPsiUtil.deparenthesize(rangeExpression);
-
         assert deparenthesized != null : "For with empty range expression";
-        boolean isInverted = operationReference.getReferencedNameElementType() == KtTokens.NOT_IN;
-        return StackValue.operation(Type.BOOLEAN_TYPE, v -> {
-            if (RangeCodegenUtil.isPrimitiveRangeSpecializationOfType(leftValue.type, deparenthesized, bindingContext) ||
-                RangeCodegenUtil.isPrimitiveRangeToExtension(operationReference, bindingContext)) {
-                generateInPrimitiveRange(leftValue, (KtBinaryExpression) deparenthesized, isInverted);
-            }
-            else {
-                ResolvedCall<? extends CallableDescriptor> resolvedCall = CallUtilKt
-                        .getResolvedCallWithAssert(operationReference, bindingContext);
-                StackValue result = invokeFunction(resolvedCall.getCall(), resolvedCall, StackValue.none());
-                result.put(result.type, v);
-                if (isInverted) {
-                    genInvertBoolean(v);
-                }
-            }
-            return null;
-        });
-    }
-
-    /*
-     * Translates x in a..b to a <= x && x <= b
-     * and x !in a..b to a > x || x > b for any primitive type
-     */
-    private void generateInPrimitiveRange(StackValue argument, KtBinaryExpression rangeExpression, boolean isInverted) {
-        Type rangeType = argument.type;
-        int localVarIndex = myFrameMap.enterTemp(rangeType);
-        // Load left bound
-        gen(rangeExpression.getLeft(), rangeType);
-        // Load x into local variable to avoid StackValue#put side-effects
-        argument.put(rangeType, v);
-        v.store(localVarIndex, rangeType);
-        v.load(localVarIndex, rangeType);
-
-        // If (x < left) goto L1
-        Label l1 = new Label();
-        emitGreaterThan(rangeType, l1);
-
-        // If (x > right) goto L1
-        v.load(localVarIndex, rangeType);
-        gen(rangeExpression.getRight(), rangeType);
-        emitGreaterThan(rangeType, l1);
-
-        Label l2 = new Label();
-        v.iconst(isInverted ? 0 : 1);
-        v.goTo(l2);
-
-        v.mark(l1);
-        v.iconst(isInverted ? 1 : 0);
-        v.mark(l2);
-        myFrameMap.leaveTemp(rangeType);
-    }
-
-    private void emitGreaterThan(Type type, Label label) {
-        if (AsmUtil.isIntPrimitive(type)) {
-            v.ificmpgt(label);
-        }
-        else if (type == Type.LONG_TYPE) {
-            v.lcmp();
-            v.ifgt(label);
-        }
-        // '>' != 'compareTo' for NaN and +/- 0.0
-        else if (type == Type.FLOAT_TYPE || type == Type.DOUBLE_TYPE) {
-            v.cmpg(type);
-            v.ifgt(label);
-        }
-        else {
-            throw new UnsupportedOperationException("Unexpected type: " + type);
-        }
+        RangeValue rangeValue = RangeValuesKt.createRangeValueForExpression(this, deparenthesized);
+        return rangeValue.createInExpressionGenerator(this, operationReference).generate(leftValue);
     }
 
     private StackValue generateBooleanAnd(KtBinaryExpression expression) {
@@ -2972,6 +2894,20 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
         if (isPrimitive(leftType) && right instanceof KtSafeQualifiedExpression) {
             return genCmpPrimitiveToSafeCall(left, leftType, (KtSafeQualifiedExpression) right, opToken);
         }
+
+        if (BoxedToPrimitiveEquality.isApplicable(opToken, leftType, rightType)) {
+            return BoxedToPrimitiveEquality.create(opToken, genLazy(left, leftType), leftType, genLazy(right, rightType), rightType,
+                                                   myFrameMap);
+        }
+
+        if (PrimitiveToBoxedEquality.isApplicable(opToken, leftType, rightType)) {
+            return PrimitiveToBoxedEquality.create(opToken, genLazy(left, leftType), leftType, genLazy(right, rightType), rightType);
+        }
+
+        if (PrimitiveToObjectEquality.isApplicable(opToken, leftType, rightType)) {
+            return PrimitiveToObjectEquality.create(opToken, genLazy(left, leftType), leftType, genLazy(right, rightType), rightType);
+        }
+
 
         if (isPrimitive(leftType) != isPrimitive(rightType)) {
             leftType = boxType(leftType);
@@ -3564,7 +3500,7 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
     }
 
     @NotNull
-    private StackValue getVariableMetadataValue(VariableDescriptor variableDescriptor) {
+    private StackValue getVariableMetadataValue(@NotNull VariableDescriptorWithAccessors variableDescriptor) {
         StackValue value = findLocalOrCapturedValue(getDelegatedLocalVariableMetadata(variableDescriptor, bindingContext));
         assert value != null : "Can't find stack value for local delegated variable metadata: " + variableDescriptor;
         return value;
@@ -3610,14 +3546,13 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
             StackValue metadataValue = getVariableMetadataValue(variableDescriptor);
             initializePropertyMetadata((KtProperty) variableDeclaration, variableDescriptor, metadataValue);
 
-            ResolvedCall<FunctionDescriptor> provideDelegateResolvedCall = bindingContext.get(PROVIDE_DELEGATE_RESOLVED_CALL, variableDescriptor);
-            if (provideDelegateResolvedCall != null) {
-                resultType = generateProvideDelegateCallForLocalVariable(initializer, metadataValue, provideDelegateResolvedCall);
+            ResolvedCall<FunctionDescriptor> provideDelegateCall = bindingContext.get(PROVIDE_DELEGATE_RESOLVED_CALL, variableDescriptor);
+            if (provideDelegateCall != null) {
+                resultType = generateProvideDelegateCallForLocalVariable(initializer, metadataValue, provideDelegateCall);
             }
         }
 
         storeTo.storeSelector(resultType, v);
-
     }
 
     @NotNull
@@ -3664,10 +3599,16 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
             @NotNull LocalVariableDescriptor variableDescriptor,
             @NotNull StackValue metadataVar
     ) {
+        // TODO: do not generate anonymous classes for local delegated properties in inline functions
+        // We can use the $$delegatedProperties array as in non-inline functions and upon inlining, detect elements at what indices
+        // of that array are used in the inline function body, load the corresponding initializing bytecode from <clinit> of the
+        // container class (where the PropertyReferenceNImpl instance is created), copy and adapt it at the call site
         //noinspection ConstantConditions
-        StackValue value = generatePropertyReference(variable.getDelegate(), variableDescriptor, variableDescriptor, null, null);
-        value.put(K_PROPERTY0_TYPE, v);
-        metadataVar.storeSelector(K_PROPERTY0_TYPE, v);
+        StackValue value = context.getFunctionDescriptor().isInline()
+                           ? generatePropertyReference(variable.getDelegate(), variableDescriptor, variableDescriptor, null, null)
+                           : PropertyCodegen.getDelegatedPropertyMetadata(variableDescriptor, bindingContext);
+        value.put(K_PROPERTY_TYPE, v);
+        metadataVar.storeSelector(K_PROPERTY_TYPE, v);
     }
 
     @NotNull

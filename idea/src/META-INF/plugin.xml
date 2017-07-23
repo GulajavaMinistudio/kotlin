@@ -39,6 +39,9 @@
       <skipForDefaultProject/>
     </component>
     <component>
+      <implementation-class>org.jetbrains.kotlin.idea.highlighter.ScriptExternalHighlightingPass$Factory</implementation-class>
+    </component>
+    <component>
       <implementation-class>org.jetbrains.kotlin.idea.completion.LookupCancelWatcher</implementation-class>
     </component>
     <component>
@@ -122,37 +125,48 @@
       <add-to-group group-id="KotlinToolsGroup" anchor="last"/>
     </action>
 
-    <action id="CheckPartialBodyResolve" class="org.jetbrains.kotlin.idea.actions.internal.CheckPartialBodyResolveAction"
-            text="Check Partial Body Resolve">
-      <add-to-group group-id="KotlinToolsGroup" anchor="last"/>
-    </action>
-
-    <action id="PrintOutNotPropertyMatches" class="org.jetbrains.kotlin.idea.actions.internal.SearchNotPropertyCandidatesAction"
-            text="Search Not Property Candidates">
-      <add-to-group group-id="KotlinToolsGroup" anchor="last"/>
-    </action>
-
-    <action id="FindImplicitNothingAction" class="org.jetbrains.kotlin.idea.actions.internal.FindImplicitNothingAction"
-            text="Find Implicit Nothing Calls">
-      <add-to-group group-id="KotlinToolsGroup" anchor="last"/>
-    </action>
-
-    <action id="CheckComponentsUsageSearchAction" class="org.jetbrains.kotlin.idea.actions.internal.CheckComponentsUsageSearchAction"
-            text="Check Component Functions Usage Search">
-      <add-to-group group-id="KotlinToolsGroup" anchor="last"/>
-    </action>
-
     <action id="KotlinInternalMode" class="org.jetbrains.kotlin.idea.actions.internal.KotlinInternalModeToggleAction">
       <add-to-group group-id="KotlinToolsGroup" anchor="last"/>
     </action>
 
-    <action id="StoredExceptionsThrowToggleAction" class="org.jetbrains.kotlin.idea.actions.internal.StoredExceptionsThrowToggleAction"
-            text="Throw cached PCE">
-    </action>
 
-    <action id="CreateIncrementalCompilationBackup" class="org.jetbrains.kotlin.idea.internal.makeBackup.CreateIncrementalCompilationBackup">
+
+    <group id="KotlinInternalGroup" popup="true" text="Internal" icon="/general/balloonWarning.png"
+           class="org.jetbrains.kotlin.idea.actions.internal.KotlinInternalActionGroup">
+
+      <group id="KotlinCompletionBenchmarkGroup" popup="true" text="Benchmark completion"
+             class="org.jetbrains.kotlin.idea.actions.internal.KotlinInternalActionGroup" >
+
+        <action id="TopLevelCompletionBenchmarkAction"
+                class="org.jetbrains.kotlin.idea.actions.internal.benchmark.TopLevelCompletionBenchmarkAction"
+                text="Top-level scenario"/>
+
+        <action id="LocalCompletionBenchmarkAction"
+                class="org.jetbrains.kotlin.idea.actions.internal.benchmark.LocalCompletionBenchmarkAction"
+                text="Local scenario"/>
+      </group>
+
+      <action id="CheckComponentsUsageSearchAction" class="org.jetbrains.kotlin.idea.actions.internal.CheckComponentsUsageSearchAction"
+              text="Check Component Functions Usage Search"/>
+
+      <action id="FindImplicitNothingAction" class="org.jetbrains.kotlin.idea.actions.internal.FindImplicitNothingAction"
+              text="Find Implicit Nothing Calls"/>
+
+      <action id="PrintOutNotPropertyMatches" class="org.jetbrains.kotlin.idea.actions.internal.SearchNotPropertyCandidatesAction"
+              text="Search Not Property Candidates"/>
+
+      <action id="CheckPartialBodyResolve" class="org.jetbrains.kotlin.idea.actions.internal.CheckPartialBodyResolveAction"
+              text="Check Partial Body Resolve"/>
+
+      <action id="CreateIncrementalCompilationBackup"
+              class="org.jetbrains.kotlin.idea.internal.makeBackup.CreateIncrementalCompilationBackup"/>
+
+      <action id="StoredExceptionsThrowToggleAction" class="org.jetbrains.kotlin.idea.actions.internal.StoredExceptionsThrowToggleAction"
+              text="Throw cached PCE"/>
+
       <add-to-group group-id="KotlinToolsGroup" anchor="last"/>
-    </action>
+    </group>
+
 
     <action id="ExtractFunctionToScope" class="org.jetbrains.kotlin.idea.refactoring.introduce.extractFunction.ExtractFunctionToScopeAction"
             text="Function to _Scope...">
@@ -264,11 +278,14 @@
     <projectService serviceInterface="org.jetbrains.kotlin.script.KotlinScriptDefinitionProvider"
                     serviceImplementation="org.jetbrains.kotlin.script.KotlinScriptDefinitionProvider"/>
 
-    <projectService serviceInterface="org.jetbrains.kotlin.script.KotlinScriptExternalImportsProvider"
-                    serviceImplementation="org.jetbrains.kotlin.script.KotlinScriptExternalImportsProviderImpl"/>
+    <projectService serviceInterface="org.jetbrains.kotlin.script.ScriptDependenciesProvider"
+                    serviceImplementation="org.jetbrains.kotlin.idea.core.script.IdeScriptDependenciesProvider"/>
 
-    <projectService serviceInterface="org.jetbrains.kotlin.idea.core.script.KotlinScriptConfigurationManager"
-                    serviceImplementation="org.jetbrains.kotlin.idea.core.script.KotlinScriptConfigurationManager"/>
+    <projectService serviceInterface="org.jetbrains.kotlin.idea.core.script.ScriptDependenciesManager"
+                    serviceImplementation="org.jetbrains.kotlin.idea.core.script.ScriptDependenciesManager"/>
+
+    <projectService serviceInterface="org.jetbrains.kotlin.script.ScriptReportSink"
+                    serviceImplementation="org.jetbrains.kotlin.idea.core.script.IdeScriptReportSink"/>
 
     <projectService serviceInterface="org.jetbrains.kotlin.idea.compiler.configuration.KotlinCommonCompilerArgumentsHolder"
                     serviceImplementation="org.jetbrains.kotlin.idea.compiler.configuration.KotlinCommonCompilerArgumentsHolder"/>
@@ -671,7 +688,6 @@
     <projectTemplatesFactory implementation="org.jetbrains.kotlin.idea.framework.KotlinTemplatesFactory" />
 
     <library.presentationProvider implementation="org.jetbrains.kotlin.idea.framework.JavaRuntimePresentationProvider"/>
-    <library.presentationProvider implementation="org.jetbrains.kotlin.idea.framework.JSLibraryStdPresentationProvider"/>
 
     <library.javaSourceRootDetector implementation="org.jetbrains.kotlin.idea.configuration.KotlinSourceRootDetector"/>
 
@@ -822,6 +838,9 @@
 
     <usageContextPanelProvider implementation="org.jetbrains.kotlin.idea.slicer.KotlinUsageContextDataInflowPanel$Provider"/>
     <usageContextPanelProvider implementation="org.jetbrains.kotlin.idea.slicer.KotlinUsageContextDataOutflowPanel$Provider"/>
+
+    <library.type implementation="org.jetbrains.kotlin.idea.framework.JSLibraryType"/>
+    <library.type implementation="org.jetbrains.kotlin.idea.framework.CommonLibraryType"/>
 
     <intentionAction>
       <className>org.jetbrains.kotlin.idea.intentions.FoldInitializerAndIfToElvisIntention</className>
@@ -1279,6 +1298,11 @@
     </intentionAction>
 
     <intentionAction>
+      <className>org.jetbrains.kotlin.idea.intentions.AddJvmStaticIntention</className>
+      <category>Kotlin</category>
+    </intentionAction>
+
+    <intentionAction>
       <className>org.jetbrains.kotlin.idea.intentions.RemoveArgumentNameIntention</className>
       <category>Kotlin</category>
     </intentionAction>
@@ -1580,6 +1604,11 @@
 
     <intentionAction>
       <className>org.jetbrains.kotlin.idea.intentions.ReplaceAddWithPlusAssignIntention</className>
+      <category>Kotlin</category>
+    </intentionAction>
+
+    <intentionAction>
+      <className>org.jetbrains.kotlin.idea.intentions.ConvertClassToSealedClassIntention</className>
       <category>Kotlin</category>
     </intentionAction>
 
@@ -1952,7 +1981,7 @@
                      language="kotlin"
     />
 
-    <localInspection implementationClass="org.jetbrains.kotlin.idea.intentions.RedundantUnitReturnTypeInspection"
+    <localInspection implementationClass="org.jetbrains.kotlin.idea.inspections.RedundantUnitReturnTypeInspection"
                      displayName="Redundant 'Unit' return type"
                      groupPath="Kotlin"
                      groupName="Redundant constructs"
@@ -2026,7 +2055,7 @@
                      language="kotlin"
     />
 
-    <localInspection implementationClass="org.jetbrains.kotlin.idea.intentions.RemoveSetterParameterTypeInspection"
+    <localInspection implementationClass="org.jetbrains.kotlin.idea.inspections.RemoveSetterParameterTypeInspection"
                      displayName="Redundant setter parameter type"
                      groupPath="Kotlin"
                      groupName="Redundant constructs"
@@ -2375,6 +2404,33 @@
                      groupName="Style issues"
                      enabledByDefault="true"
                      level="INFO"
+                     language="kotlin"
+    />
+
+    <localInspection implementationClass="org.jetbrains.kotlin.idea.inspections.NullChecksToSafeCallInspection"
+                     displayName="Null-checks replaceable with safe-calls"
+                     groupPath="Kotlin"
+                     groupName="Redundant constructs"
+                     enabledByDefault="true"
+                     level="WEAK WARNING"
+                     language="kotlin"
+    />
+
+    <localInspection implementationClass="org.jetbrains.kotlin.idea.inspections.ConstantConditionIfInspection"
+                     displayName="Condition of 'if' expression is constant"
+                     groupPath="Kotlin"
+                     groupName="Redundant constructs"
+                     enabledByDefault="true"
+                     level="WEAK WARNING"
+                     language="kotlin"
+    />
+
+    <localInspection implementationClass="org.jetbrains.kotlin.idea.inspections.UnnecessaryVariableInspection"
+                     displayName="Unnecessary local variable"
+                     groupPath="Kotlin"
+                     groupName="Redundant constructs"
+                     enabledByDefault="true"
+                     level="WEAK WARNING"
                      language="kotlin"
     />
 

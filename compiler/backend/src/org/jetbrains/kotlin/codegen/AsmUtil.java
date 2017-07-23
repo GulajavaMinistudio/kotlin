@@ -38,6 +38,7 @@ import org.jetbrains.kotlin.descriptors.*;
 import org.jetbrains.kotlin.lexer.KtTokens;
 import org.jetbrains.kotlin.load.java.JavaVisibilities;
 import org.jetbrains.kotlin.load.java.JvmAnnotationNames;
+import org.jetbrains.kotlin.name.ClassId;
 import org.jetbrains.kotlin.name.FqName;
 import org.jetbrains.kotlin.protobuf.MessageLite;
 import org.jetbrains.kotlin.renderer.DescriptorRenderer;
@@ -139,8 +140,16 @@ public class AsmUtil {
         return primitiveTypeByBoxedType.get(boxedType);
     }
 
+    public static boolean isBoxedTypeOf(@NotNull Type boxedType, @NotNull Type unboxedType) {
+        return unboxPrimitiveTypeOrNull(boxedType) == unboxedType;
+    }
+
     public static boolean isIntPrimitive(Type type) {
         return type == Type.INT_TYPE || type == Type.SHORT_TYPE || type == Type.BYTE_TYPE || type == Type.CHAR_TYPE;
+    }
+
+    public static boolean isIntOrLongPrimitive(Type type) {
+        return isIntPrimitive(type) || type == Type.LONG_TYPE;
     }
 
     public static boolean isNumberPrimitiveOrBoolean(Type type) {
@@ -798,6 +807,16 @@ public class AsmUtil {
         }
     }
 
+    public static void pop2(@NotNull MethodVisitor v, @NotNull Type type) {
+        if (type.getSize() == 2) {
+            v.visitInsn(Opcodes.POP2);
+            v.visitInsn(Opcodes.POP2);
+        }
+        else {
+            v.visitInsn(Opcodes.POP2);
+        }
+    }
+
     public static void dup(@NotNull InstructionAdapter v, @NotNull Type type) {
         dup(v, type.getSize());
     }
@@ -808,6 +827,22 @@ public class AsmUtil {
         }
         else if (size == 1) {
             v.dup();
+        }
+        else {
+            throw new UnsupportedOperationException();
+        }
+    }
+
+    public static void dupx(@NotNull InstructionAdapter v, @NotNull Type type) {
+        dupx(v, type.getSize());
+    }
+
+    private static void dupx(@NotNull InstructionAdapter v, int size) {
+        if (size == 2) {
+            v.dup2X2();
+        }
+        else if (size == 1) {
+            v.dupX1();
         }
         else {
             throw new UnsupportedOperationException();
@@ -867,6 +902,11 @@ public class AsmUtil {
     @NotNull
     public static Type asmTypeByFqNameWithoutInnerClasses(@NotNull FqName fqName) {
         return Type.getObjectType(internalNameByFqNameWithoutInnerClasses(fqName));
+    }
+
+    @NotNull
+    public static Type asmTypeByClassId(@NotNull ClassId classId) {
+        return Type.getObjectType(classId.asString().replace('.', '$'));
     }
 
     @NotNull

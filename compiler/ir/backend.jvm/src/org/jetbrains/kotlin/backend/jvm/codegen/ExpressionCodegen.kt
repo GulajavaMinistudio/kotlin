@@ -341,10 +341,9 @@ class ExpressionCodegen(
     }
 
     private fun findLocalIndex(descriptor: CallableDescriptor): Int {
-        val index = frame.getIndex(descriptor).apply {
+        return frame.getIndex(descriptor).apply {
             if (this < 0) throw AssertionError("Non-mapped local variable descriptor: $descriptor")
         }
-        return index
     }
 
     override fun visitGetObjectValue(expression: IrGetObjectValue, data: BlockInfo): StackValue {
@@ -453,13 +452,12 @@ class ExpressionCodegen(
         }
         else {
             mv.iconst(size)
-            val asmType = elementType
             newArrayInstruction(expression.type)
             for ((i, element)  in expression.elements.withIndex()) {
                 mv.dup()
                 StackValue.constant(i, Type.INT_TYPE).put(Type.INT_TYPE, mv)
-                val rightSide = gen(element, asmType, data)
-                StackValue.arrayElement(asmType, StackValue.onStack(asmType), StackValue.onStack(Type.INT_TYPE)).store(rightSide, mv)
+                val rightSide = gen(element, elementType, data)
+                StackValue.arrayElement(elementType, StackValue.onStack(elementType), StackValue.onStack(Type.INT_TYPE)).store(rightSide, mv)
             }
         }
         return expression.onStack
@@ -903,11 +901,11 @@ class ExpressionCodegen(
         }
         if (descriptor is CallableMemberDescriptor && JvmCodegenUtil.getDirectMember(descriptor) is SyntheticJavaPropertyDescriptor) {
             val propertyDescriptor = JvmCodegenUtil.getDirectMember(descriptor) as SyntheticJavaPropertyDescriptor
-            if (descriptor is PropertyGetterDescriptor) {
-                descriptor = propertyDescriptor.getMethod
+            descriptor = if (descriptor is PropertyGetterDescriptor) {
+                propertyDescriptor.getMethod
             }
             else {
-                descriptor = propertyDescriptor.setMethod!!
+                propertyDescriptor.setMethod!!
             }
         }
         return typeMapper.mapToCallableMethod(descriptor as FunctionDescriptor, isSuper)
@@ -935,11 +933,11 @@ class ExpressionCodegen(
         if (!isInline) return IrCallGenerator.DefaultCallGenerator
 
         val original = unwrapInitialSignatureDescriptor(DescriptorUtils.unwrapFakeOverride(descriptor.original as FunctionDescriptor))
-        if (isDefaultCompilation) {
-            return TODO()
+        return if (isDefaultCompilation) {
+            TODO()
         }
         else {
-            return IrInlineCodegen(this, state, original, typeParameterMappings!!, IrSourceCompilerForInline(state, element))
+            IrInlineCodegen(this, state, original, typeParameterMappings!!, IrSourceCompilerForInline(state, element))
         }
     }
 

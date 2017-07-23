@@ -161,6 +161,12 @@ public class InspectionTestGenerated extends AbstractInspectionTest {
             doTest(fileName);
         }
 
+        @TestMetadata("constantConditionIf/inspectionData/inspections.test")
+        public void testConstantConditionIf_inspectionData_Inspections_test() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("idea/testData/inspections/constantConditionIf/inspectionData/inspections.test");
+            doTest(fileName);
+        }
+
         @TestMetadata("convertLambdaToReference/inspectionData/inspections.test")
         public void testConvertLambdaToReference_inspectionData_Inspections_test() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("idea/testData/inspections/convertLambdaToReference/inspectionData/inspections.test");
@@ -404,6 +410,12 @@ public class InspectionTestGenerated extends AbstractInspectionTest {
         @TestMetadata("unusedSymbol/property/inspectionData/inspections.test")
         public void testUnusedSymbol_property_inspectionData_Inspections_test() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("idea/testData/inspections/unusedSymbol/property/inspectionData/inspections.test");
+            doTest(fileName);
+        }
+
+        @TestMetadata("unusedSymbol/typeAlias/inspectionData/inspections.test")
+        public void testUnusedSymbol_typeAlias_inspectionData_Inspections_test() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("idea/testData/inspections/unusedSymbol/typeAlias/inspectionData/inspections.test");
             doTest(fileName);
         }
 

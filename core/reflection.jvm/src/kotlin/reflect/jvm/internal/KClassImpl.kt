@@ -30,7 +30,10 @@ import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.resolve.DescriptorUtils
 import org.jetbrains.kotlin.resolve.descriptorUtil.builtIns
 import org.jetbrains.kotlin.resolve.scopes.MemberScope
-import org.jetbrains.kotlin.utils.compactIfPossible
+import org.jetbrains.kotlin.serialization.deserialization.MemberDeserializer
+import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedClassDescriptor
+import org.jetbrains.kotlin.serialization.jvm.JvmProtoBuf
+import org.jetbrains.kotlin.utils.compact
 import kotlin.jvm.internal.TypeIntrinsics
 import kotlin.reflect.*
 import kotlin.reflect.jvm.internal.KDeclarationContainerImpl.MemberBelonginess.DECLARED
@@ -142,7 +145,7 @@ internal class KClassImpl<T : Any>(override val jClass: Class<T>) : KDeclaration
             }) {
                 result += KTypeImpl(descriptor.builtIns.anyType) { Any::class.java }
             }
-            result.compactIfPossible()
+            result.compact()
         }
 
         val declaredNonStaticMembers: Collection<KCallableImpl<*>>
@@ -194,6 +197,14 @@ internal class KClassImpl<T : Any>(override val jClass: Class<T>) : KDeclaration
     override fun getFunctions(name: Name): Collection<FunctionDescriptor> =
             memberScope.getContributedFunctions(name, NoLookupLocation.FROM_REFLECTION) +
             staticScope.getContributedFunctions(name, NoLookupLocation.FROM_REFLECTION)
+
+    override fun getLocalProperty(index: Int): PropertyDescriptor? {
+        return (descriptor as? DeserializedClassDescriptor)?.let { descriptor ->
+            val proto = descriptor.classProto.getExtension(JvmProtoBuf.classLocalVariable, index)
+            val nameResolver = descriptor.c.nameResolver
+            deserializeToDescriptor(jClass, proto, nameResolver, descriptor.c.typeTable, MemberDeserializer::loadProperty)
+        }
+    }
 
     override val simpleName: String? get() = data().simpleName
 

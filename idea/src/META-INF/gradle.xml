@@ -14,6 +14,7 @@
     <extensions defaultExtensionNs="com.intellij">
         <externalProjectDataService implementation="org.jetbrains.kotlin.idea.configuration.KotlinGradleSourceSetDataService"/>
         <externalProjectDataService implementation="org.jetbrains.kotlin.idea.configuration.KotlinGradleProjectDataService"/>
+        <externalProjectDataService implementation="org.jetbrains.kotlin.idea.configuration.KotlinGradleLibraryDataService"/>
 
         <localInspection
             implementationClass="org.jetbrains.kotlin.idea.inspections.gradle.DifferentKotlinGradleVersionInspection"
@@ -47,7 +48,9 @@
         <platformGradleDetector implementation="org.jetbrains.kotlin.idea.inspections.gradle.DefaultPlatformGradleDetector"/>
 
         <scriptTemplatesProvider
-            id="GradleScriptTemplatesProvider"
-            implementation="org.jetbrains.kotlin.idea.core.script.GradleScriptTemplatesProvider"/>
+            implementation="org.jetbrains.kotlin.idea.core.script.GradleKotlinDSLTemplateProvider"/>
+
+        <scriptTemplatesProvider
+            implementation="org.jetbrains.kotlin.idea.core.script.LegacyGradleScriptKotlinTemplateProvider"/>
     </extensions>
 </idea-plugin>

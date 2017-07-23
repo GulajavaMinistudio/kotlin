@@ -194,7 +194,7 @@ fun PsiElement.getExtractionContainers(strict: Boolean = true, includeAll: Boole
     fun getEnclosingDeclaration(element: PsiElement, strict: Boolean): PsiElement? {
         return (if (strict) element.parents else element.parentsWithSelf)
                 .filter {
-                    (it is KtDeclarationWithBody && it !is KtFunctionLiteral)
+                    (it is KtDeclarationWithBody && it !is KtFunctionLiteral && !(it is KtNamedFunction && it.name == null))
                     || it is KtAnonymousInitializer
                     || it is KtClassBody
                     || it is KtFile
@@ -875,10 +875,10 @@ fun checkSuperMethods(
         val exitCode = showYesNoCancelDialog(
                 CHECK_SUPER_METHODS_YES_NO_DIALOG,
                 declaration.project, message, IdeBundle.message("title.warning"), Messages.getQuestionIcon(), Messages.YES)
-        when (exitCode) {
-            Messages.YES -> return overriddenElementsToDescriptor.keys.toList()
-            Messages.NO -> return listOf(declaration)
-            else -> return emptyList()
+        return when (exitCode) {
+            Messages.YES -> overriddenElementsToDescriptor.keys.toList()
+            Messages.NO -> listOf(declaration)
+            else -> emptyList()
         }
     }
 

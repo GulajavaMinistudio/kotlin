@@ -619,11 +619,11 @@ class MethodInliner(
     }
 
     private fun wrapException(originalException: Throwable, node: MethodNode, errorSuffix: String): RuntimeException {
-        if (originalException is InlineException) {
-            return InlineException("$errorPrefix: $errorSuffix", originalException)
+        return if (originalException is InlineException) {
+            InlineException("$errorPrefix: $errorSuffix", originalException)
         }
         else {
-            return InlineException("$errorPrefix: $errorSuffix\nCause: ${node.nodeText}", originalException)
+            InlineException("$errorPrefix: $errorSuffix\nCause: ${node.nodeText}", originalException)
         }
     }
 
@@ -679,11 +679,11 @@ class MethodInliner(
             localReturns.add(LocalReturn(returnInsn, insertBeforeInsn, sourceValueFrame))
 
             if (returnInsn.opcode != Opcodes.RETURN) {
-                if (returnInsn.opcode == Opcodes.LRETURN || returnInsn.opcode == Opcodes.DRETURN) {
-                    returnVariableSize = 2
+                returnVariableSize = if (returnInsn.opcode == Opcodes.LRETURN || returnInsn.opcode == Opcodes.DRETURN) {
+                    2
                 }
                 else {
-                    returnVariableSize = 1
+                    1
                 }
             }
         }
@@ -716,10 +716,9 @@ class MethodInliner(
                 "Captured field template should start with $CAPTURED_FIELD_FOLD_PREFIX prefix"
             }
             val fin = FieldInsnNode(node.opcode, node.owner, node.name.substring(3), node.desc)
-            val field = fieldRemapper.findField(fin) ?: throw IllegalStateException(
+            return fieldRemapper.findField(fin) ?: throw IllegalStateException(
                     "Couldn't find captured field ${node.owner}.${node.name} in ${fieldRemapper.originalLambdaInternalName}"
             )
-            return field
         }
 
         private fun analyzeMethodNodeWithoutMandatoryTransformations(node: MethodNode): Array<Frame<SourceValue>?> {
@@ -846,9 +845,13 @@ class MethodInliner(
                     }
 
                     if (isLocalReturn && endLabel != null) {
+                        val nop = InsnNode(Opcodes.NOP)
+                        instructions.insert(insnNode, nop)
+
                         val labelNode = endLabel.info as LabelNode
                         val jumpInsnNode = JumpInsnNode(Opcodes.GOTO, labelNode)
-                        instructions.insert(insnNode, jumpInsnNode)
+                        instructions.insert(nop, jumpInsnNode)
+
                         instructions.remove(insnNode)
                         insnNode = jumpInsnNode
                     }

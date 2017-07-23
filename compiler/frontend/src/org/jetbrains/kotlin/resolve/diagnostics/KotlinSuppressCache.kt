@@ -171,7 +171,7 @@ abstract class KotlinSuppressCache {
             builder.addAll(suppressStringProvider[annotationDescriptor])
         }
 
-        if (!KotlinBuiltIns.isSuppressAnnotation(annotationDescriptor)) return
+        if (annotationDescriptor.fqName != KotlinBuiltIns.FQ_NAMES.suppress) return
 
         // We only add strings and skip other values to facilitate recovery in presence of erroneous code
         for (arrayValue in annotationDescriptor.allValueArguments.values) {
@@ -262,11 +262,11 @@ class BindingContextSuppressCache(val context: BindingContext) : KotlinSuppressC
     override fun getSuppressionAnnotations(annotated: KtAnnotated): List<AnnotationDescriptor> {
         val descriptor = context.get(BindingContext.DECLARATION_TO_DESCRIPTOR, annotated)
 
-        if (descriptor != null) {
-            return descriptor.annotations.toList()
+        return if (descriptor != null) {
+            descriptor.annotations.toList()
         }
         else {
-            return annotated.annotationEntries.mapNotNull { context.get(BindingContext.ANNOTATION, it) }
+            annotated.annotationEntries.mapNotNull { context.get(BindingContext.ANNOTATION, it) }
         }
     }
 }

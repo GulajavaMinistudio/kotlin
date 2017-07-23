@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2015 KtBrains s.r.o.
+ * Copyright 2010-2015 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -188,13 +188,12 @@ class DebuggerClassNameProvider(
 
                 val classNamesOfContainingDeclaration = getOuterClassNamesForElement(element.relevantParentInReadAction)
 
-                val nonInlineClasses: ComputedClassNames
-                if (runReadAction { element.name == null || element.isLocal }) {
-                    nonInlineClasses = classNamesOfContainingDeclaration + ComputedClassNames.Cached(
+                val nonInlineClasses: ComputedClassNames = if (runReadAction { element.name == null || element.isLocal }) {
+                    classNamesOfContainingDeclaration + ComputedClassNames.Cached(
                             asmTypeForAnonymousClass(typeMapper.bindingContext, element).internalName.toJdiName())
                 }
                 else {
-                    nonInlineClasses = classNamesOfContainingDeclaration
+                    classNamesOfContainingDeclaration
                 }
 
                 if (!findInlineUseSites || !element.isInlineInReadAction) {

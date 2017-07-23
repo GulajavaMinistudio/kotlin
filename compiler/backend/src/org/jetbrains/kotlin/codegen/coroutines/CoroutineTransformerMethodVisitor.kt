@@ -111,12 +111,11 @@ class CoroutineTransformerMethodVisitor(
         methodNode.instructions.apply {
             val startLabel = LabelNode()
             val defaultLabel = LabelNode()
-            val firstToInsertBefore = actualCoroutineStart
             val tableSwitchLabel = LabelNode()
             val lineNumber = CodegenUtil.getLineNumberForElement(element, false) ?: 0
 
             // tableswitch(this.label)
-            insertBefore(firstToInsertBefore,
+            insertBefore(actualCoroutineStart,
                          insnListOf(
                                  *withInstructionAdapter { loadCoroutineSuspendedMarker() }.toArray(),
                                  tableSwitchLabel,
@@ -757,4 +756,4 @@ private fun AbstractInsnNode?.isInvisibleInDebugVarInsn(methodNode: MethodNode):
 }
 
 private val SAFE_OPCODES =
-        ((Opcodes.DUP..Opcodes.DUP2_X2) + Opcodes.POP + Opcodes.POP2 + (Opcodes.IFEQ..Opcodes.GOTO)).toSet()
+        ((Opcodes.DUP..Opcodes.DUP2_X2) + Opcodes.NOP + Opcodes.POP + Opcodes.POP2 + (Opcodes.IFEQ..Opcodes.GOTO)).toSet()

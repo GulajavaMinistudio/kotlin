@@ -28,6 +28,7 @@ import org.jetbrains.kotlin.psi.Call
 import org.jetbrains.kotlin.psi.KtReferenceExpression
 import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.TemporaryBindingTrace
+import org.jetbrains.kotlin.resolve.calls.model.KotlinCallKind
 import org.jetbrains.kotlin.resolve.calls.CallTransformer
 import org.jetbrains.kotlin.resolve.calls.CandidateResolver
 import org.jetbrains.kotlin.resolve.calls.callResolverUtil.isBinaryRemOperator
@@ -68,7 +69,7 @@ class NewResolutionOldInference(
         private val languageVersionSettings: LanguageVersionSettings,
         private val coroutineInferenceSupport: CoroutineInferenceSupport
 ) {
-    sealed class ResolutionKind<D : CallableDescriptor> {
+    sealed class ResolutionKind<D : CallableDescriptor>(val kotlinCallKind: KotlinCallKind = KotlinCallKind.UNSUPPORTED) {
         abstract internal fun createTowerProcessor(
                 outer: NewResolutionOldInference,
                 name: Name,
@@ -78,7 +79,7 @@ class NewResolutionOldInference(
                 context: BasicCallResolutionContext
         ): ScopeTowerProcessor<MyCandidate>
 
-        object Function : ResolutionKind<FunctionDescriptor>() {
+        object Function : ResolutionKind<FunctionDescriptor>(KotlinCallKind.FUNCTION) {
             override fun createTowerProcessor(
                     outer: NewResolutionOldInference, name: Name, tracing: TracingStrategy,
                     scopeTower: ImplicitScopeTower, explicitReceiver: DetailedReceiver?, context: BasicCallResolutionContext
@@ -88,7 +89,7 @@ class NewResolutionOldInference(
             }
         }
 
-        object Variable : ResolutionKind<VariableDescriptor>() {
+        object Variable : ResolutionKind<VariableDescriptor>(KotlinCallKind.VARIABLE) {
             override fun createTowerProcessor(
                     outer: NewResolutionOldInference, name: Name, tracing: TracingStrategy,
                     scopeTower: ImplicitScopeTower, explicitReceiver: DetailedReceiver?, context: BasicCallResolutionContext
@@ -173,9 +174,7 @@ class NewResolutionOldInference(
 
         // Temporary hack to resolve 'rem' as 'mod' if the first is do not present
         val emptyOrInapplicableCandidates = candidates.isEmpty() ||
-                                            candidates.all {
-                                                it.candidateStatus.resultingApplicability == ResolutionCandidateApplicability.INAPPLICABLE
-                                            }
+                                            candidates.all { it.candidateStatus.resultingApplicability.isInapplicable }
         if (isBinaryRemOperator && shouldUseOperatorRem && emptyOrInapplicableCandidates) {
             val deprecatedName = OperatorConventions.REM_TO_MOD_OPERATION_NAMES[name]
             val processorForDeprecatedName = kind.createTowerProcessor(this, deprecatedName!!, tracing, scopeTower, detailedReceiver, context)
@@ -458,7 +457,7 @@ class NewResolutionOldInference(
 
 }
 
-private fun ResolutionContext<*>.transformToReceiverWithSmartCastInfo(receiver: ReceiverValue): ReceiverValueWithSmartCastInfo {
+fun ResolutionContext<*>.transformToReceiverWithSmartCastInfo(receiver: ReceiverValue): ReceiverValueWithSmartCastInfo {
     val dataFlowValue = DataFlowValueFactory.createDataFlowValue(receiver, this)
     return ReceiverValueWithSmartCastInfo(receiver, dataFlowInfo.getCollectedTypes(dataFlowValue), dataFlowValue.isStable)
 }
@@ -471,6 +470,8 @@ internal fun createPreviousResolveError(status: ResolutionStatus): PreviousResol
     val level = when (status) {
         ResolutionStatus.SUCCESS, ResolutionStatus.INCOMPLETE_TYPE_INFERENCE -> return null
         ResolutionStatus.UNSAFE_CALL_ERROR -> ResolutionCandidateApplicability.MAY_THROW_RUNTIME_ERROR
+        ResolutionStatus.ARGUMENTS_MAPPING_ERROR -> ResolutionCandidateApplicability.INAPPLICABLE_ARGUMENTS_MAPPING_ERROR
+        ResolutionStatus.RECEIVER_TYPE_ERROR -> ResolutionCandidateApplicability.INAPPLICABLE_WRONG_RECEIVER
         else -> ResolutionCandidateApplicability.INAPPLICABLE
     }
     return PreviousResolutionError(level)

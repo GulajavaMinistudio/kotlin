@@ -49,9 +49,9 @@ import org.jetbrains.kotlin.asJava.toLightClass
 import org.jetbrains.kotlin.asJava.toLightMethods
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.descriptors.annotations.Annotated
-import org.jetbrains.kotlin.descriptors.annotations.AnnotationDescriptor
 import org.jetbrains.kotlin.idea.caches.resolve.findModuleDescriptor
 import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptorIfAny
+import org.jetbrains.kotlin.idea.core.isInheritable
 import org.jetbrains.kotlin.idea.core.toDescriptor
 import org.jetbrains.kotlin.idea.findUsages.KotlinFindUsagesHandlerFactory
 import org.jetbrains.kotlin.idea.findUsages.handlers.KotlinFindClassUsagesHandler
@@ -68,9 +68,6 @@ import org.jetbrains.kotlin.idea.util.ProjectRootsUtil
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.*
-import org.jetbrains.kotlin.resolve.DescriptorUtils
-import org.jetbrains.kotlin.types.KotlinType
-import org.jetbrains.kotlin.types.isError
 import org.jetbrains.kotlin.util.findCallableMemberBySignature
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
@@ -117,19 +114,14 @@ class UnusedSymbolInspection : AbstractKotlinInspection() {
 
         // variation of IDEA's AnnotationUtil.checkAnnotatedUsingPatterns()
         private fun checkAnnotatedUsingPatterns(annotated: Annotated, annotationPatterns: Collection<String>): Boolean {
-            val annotationsPresent = annotated.annotations
-                    .map(AnnotationDescriptor::getType)
-                    .filterNot(KotlinType::isError)
-                    .mapNotNull { it.constructor.declarationDescriptor?.let { descriptor ->
-                        DescriptorUtils.getFqName(descriptor).asString()
-                    } }
-
+            val annotationsPresent = annotated.annotations.mapNotNull { it.fqName?.asString() }
             if (annotationsPresent.isEmpty()) return false
 
             for (pattern in annotationPatterns) {
                 val hasAnnotation = if (pattern.endsWith(".*")) {
                     annotationsPresent.any { it.startsWith(pattern.dropLast(1)) }
-                } else {
+                }
+                else {
                     pattern in annotationsPresent
                 }
                 if (hasAnnotation) return true
@@ -137,7 +129,6 @@ class UnusedSymbolInspection : AbstractKotlinInspection() {
 
             return false
         }
-
     }
 
     override fun runForWholeFile() = true
@@ -154,6 +145,7 @@ class UnusedSymbolInspection : AbstractKotlinInspection() {
                     is KtSecondaryConstructor -> "Constructor is never used"
                     is KtProperty, is KtParameter -> "Property ''$name'' is never used"
                     is KtTypeParameter -> "Type parameter ''$name'' is never used"
+                    is KtTypeAlias -> "Type alias ''$name'' is never used"
                     else -> return
                 }
 

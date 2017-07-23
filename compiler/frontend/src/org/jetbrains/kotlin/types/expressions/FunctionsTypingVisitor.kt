@@ -119,11 +119,11 @@ internal class FunctionsTypingVisitor(facade: ExpressionTypingInternals) : Expre
         components.identifierChecker.checkDeclaration(function, context.trace)
         components.declarationsCheckerBuilder.withTrace(context.trace).checkFunction(function, functionDescriptor)
 
-        if (isDeclaration) {
-            return createTypeInfo(components.dataFlowAnalyzer.checkStatementType(function, context), context)
+        return if (isDeclaration) {
+            createTypeInfo(components.dataFlowAnalyzer.checkStatementType(function, context), context)
         }
         else {
-            return components.dataFlowAnalyzer.createCheckedTypeInfo(functionDescriptor.createFunctionType(), context, function)
+            components.dataFlowAnalyzer.createCheckedTypeInfo(functionDescriptor.createFunctionType(), context, function)
         }
     }
 
@@ -220,8 +220,10 @@ internal class FunctionsTypingVisitor(facade: ExpressionTypingInternals) : Expre
 
         // This is needed for ControlStructureTypingVisitor#visitReturnExpression() to properly type-check returned expressions
         context.trace.record(EXPECTED_RETURN_TYPE, functionLiteral, expectedType)
-        val typeOfBodyExpression = // Type-check the body
-                components.expressionTypingServices.getBlockReturnedType(functionLiteral.bodyExpression!!, COERCION_TO_UNIT, newContext).type
+
+        // Type-check the body
+        val blockReturnedType = components.expressionTypingServices.getBlockReturnedType(functionLiteral.bodyExpression!!, COERCION_TO_UNIT, newContext)
+        val typeOfBodyExpression = blockReturnedType.type
 
         return computeReturnTypeBasedOnReturnExpressions(functionLiteral, context, typeOfBodyExpression)
     }

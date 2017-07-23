@@ -35,13 +35,10 @@ import java.net.URLClassLoader
 import java.nio.charset.Charset
 import java.rmi.server.UnicastRemoteObject
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
-import kotlin.script.dependencies.KotlinScriptExternalDependencies
-import kotlin.script.dependencies.ScriptContents
-import kotlin.script.dependencies.ScriptDependenciesResolver
-import kotlin.script.dependencies.asFuture
+import kotlin.script.dependencies.*
+import kotlin.script.dependencies.DependenciesResolver.ResolveResult
 import kotlin.script.templates.ScriptTemplateDefinition
 import kotlin.test.fail
 
@@ -88,7 +85,7 @@ class CompilerDaemonTest : KotlinIntegrationTestBase() {
                                       verbose = true,
                                       reportPerf = true)
 
-    fun makeTestDaemonJvmOptions(logFile: File? = null, xmx: Int = 256): DaemonJVMOptions {
+    fun makeTestDaemonJvmOptions(logFile: File? = null, xmx: Int = 384): DaemonJVMOptions {
         val additionalArgs = arrayListOf<String>()
         if (logFile != null) {
             additionalArgs.add("D$COMPILE_DAEMON_LOG_PATH_PROPERTY=\"${logFile.loggerCompatiblePath}\"")
@@ -97,7 +94,7 @@ class CompilerDaemonTest : KotlinIntegrationTestBase() {
         return configureDaemonJVMOptions(
                 baseOpts,
                 *additionalArgs.toTypedArray(),
-                inheritMemoryLimits = xmx > 0,
+                inheritMemoryLimits = xmx <= 0,
                 inheritAdditionalProperties = false,
                 inheritOtherJvmOptions = false)
     }
@@ -817,18 +814,13 @@ internal val File.loggerCompatiblePath: String
         if (OSKind.current == OSKind.Windows) absolutePath.replace('\\', '/')
         else absolutePath
 
-open class TestKotlinScriptDummyDependenciesResolver : ScriptDependenciesResolver {
+open class TestKotlinScriptDummyDependenciesResolver : DependenciesResolver {
 
-    override fun resolve(script: ScriptContents,
-                         environment: Map<String, Any?>?,
-                         report: (ScriptDependenciesResolver.ReportSeverity, String, ScriptContents.Position?) -> Unit,
-                         previousDependencies: KotlinScriptExternalDependencies?
-    ): Future<KotlinScriptExternalDependencies?>
-    {
-        return object : KotlinScriptExternalDependencies {
-            override val classpath: Iterable<File> = classpathFromClassloader()
-            override val imports: Iterable<String> = listOf("org.jetbrains.kotlin.scripts.DependsOn", "org.jetbrains.kotlin.scripts.DependsOnTwo")
-        }.asFuture()
+    override fun resolve(scriptContents: ScriptContents, environment: Environment): ResolveResult {
+        return ScriptDependencies(
+            classpath = classpathFromClassloader(),
+            imports = listOf("org.jetbrains.kotlin.scripts.DependsOn", "org.jetbrains.kotlin.scripts.DependsOnTwo")
+        ).asSuccess()
     }
 }
 

@@ -60,11 +60,11 @@ interface OverrideMemberChooserObject : ClassMember {
                    preferConstructorParameter: Boolean = false
         ): OverrideMemberChooserObject {
             val declaration = DescriptorToSourceUtilsIde.getAnyDeclaration(project, descriptor)
-            if (declaration != null) {
-                return WithDeclaration(descriptor, declaration, immediateSuper, bodyType, preferConstructorParameter)
+            return if (declaration != null) {
+                WithDeclaration(descriptor, declaration, immediateSuper, bodyType, preferConstructorParameter)
             }
             else {
-                return WithoutDeclaration(descriptor, immediateSuper, bodyType, preferConstructorParameter)
+                WithoutDeclaration(descriptor, immediateSuper, bodyType, preferConstructorParameter)
             }
         }
 
@@ -135,11 +135,27 @@ private val OVERRIDE_RENDERER = DescriptorRenderer.withOptions {
     renderUnabbreviatedType = false
 }
 
-private fun generateProperty(project: Project, descriptor: PropertyDescriptor, bodyType: OverrideMemberChooserObject.BodyType): KtProperty {
-    val newDescriptor = descriptor.copy(descriptor.containingDeclaration, Modality.OPEN, descriptor.visibility,
-                                        descriptor.kind, /* copyOverrides = */ true) as PropertyDescriptor
-    newDescriptor.setSingleOverridden(descriptor)
+private fun PropertyDescriptor.wrap(): PropertyDescriptor {
+    val delegate = copy(containingDeclaration, Modality.OPEN, visibility, kind, true) as PropertyDescriptor
+    val newDescriptor = object : PropertyDescriptor by delegate {
+        override fun isHeader() = false
+    }
+    newDescriptor.setSingleOverridden(this)
+    return newDescriptor
+}
 
+private fun FunctionDescriptor.wrap(): FunctionDescriptor {
+    return object : FunctionDescriptor by this {
+        override fun isHeader() = false
+        override fun getModality() = Modality.OPEN
+        override fun getReturnType() = this@wrap.returnType?.approximateFlexibleTypes(preferNotNull = true, preferStarForRaw = true)
+        override fun getOverriddenDescriptors() = listOf(this@wrap)
+        override fun <R : Any?, D : Any?> accept(visitor: DeclarationDescriptorVisitor<R, D>, data: D) = visitor.visitFunctionDescriptor(this, data)
+    }
+}
+
+private fun generateProperty(project: Project, descriptor: PropertyDescriptor, bodyType: OverrideMemberChooserObject.BodyType): KtProperty {
+    val newDescriptor = descriptor.wrap()
     val body = buildString {
         append("\nget()")
         append(" = ")
@@ -152,19 +168,13 @@ private fun generateProperty(project: Project, descriptor: PropertyDescriptor, b
 }
 
 private fun generateConstructorParameter(project: Project, descriptor: PropertyDescriptor): KtParameter {
-    val newDescriptor = descriptor.copy(descriptor.containingDeclaration, Modality.OPEN, descriptor.visibility,
-                                        descriptor.kind, /* copyOverrides = */ true) as PropertyDescriptor
+    val newDescriptor = descriptor.wrap()
     newDescriptor.setSingleOverridden(descriptor)
     return KtPsiFactory(project).createParameter(OVERRIDE_RENDERER.render(newDescriptor))
 }
 
 private fun generateFunction(project: Project, descriptor: FunctionDescriptor, bodyType: OverrideMemberChooserObject.BodyType): KtNamedFunction {
-    val newDescriptor = object : FunctionDescriptor by descriptor {
-        override fun getModality() = Modality.OPEN
-        override fun getReturnType() = descriptor.returnType?.approximateFlexibleTypes(preferNotNull = true, preferStarForRaw = true)
-        override fun getOverriddenDescriptors() = listOf(descriptor)
-        override fun <R : Any?, D : Any?> accept(visitor: DeclarationDescriptorVisitor<R, D>, data: D) = visitor.visitFunctionDescriptor(this, data)
-    }
+    val newDescriptor = descriptor.wrap()
 
     val returnType = descriptor.returnType
     val returnsNotUnit = returnType != null && !KotlinBuiltIns.isUnit(returnType)

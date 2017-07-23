@@ -274,9 +274,7 @@ class KtPsiFactory @JvmOverloads constructor(private val project: Project, val m
         val file = createFile(text)
         val declarations = file.declarations
         assert(declarations.size == 1) { "${declarations.size} declarations in $text" }
-        @Suppress("UNCHECKED_CAST")
-        val result = declarations.first() as TDeclaration
-        return result
+        return declarations.first() as TDeclaration
     }
 
     fun createNameIdentifier(name: String): PsiElement {
@@ -660,13 +658,13 @@ class KtPsiFactory @JvmOverloads constructor(private val project: Project, val m
             assert(name != CONSTRUCTOR_NAME || target == Target.CONSTRUCTOR)
 
             sb.append(name)
-            when (target) {
+            state = when (target) {
                 Target.FUNCTION, Target.CONSTRUCTOR -> {
                     sb.append("(")
-                    state = State.FIRST_PARAM
+                    State.FIRST_PARAM
                 }
                 else ->
-                    state = State.TYPE_CONSTRAINTS
+                    State.TYPE_CONSTRAINTS
             }
 
             return this

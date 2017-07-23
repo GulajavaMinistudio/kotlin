@@ -30,9 +30,6 @@ import org.jetbrains.kotlin.android.intention.AbstractAndroidResourceIntentionTe
 import org.jetbrains.kotlin.android.lint.AbstractKotlinLintTest
 import org.jetbrains.kotlin.android.quickfix.AbstractAndroidLintQuickfixTest
 import org.jetbrains.kotlin.android.quickfix.AbstractAndroidQuickFixMultiFileTest
-import org.jetbrains.kotlin.annotation.AbstractAnnotationProcessorBoxTest
-import org.jetbrains.kotlin.annotation.processing.test.sourceRetention.AbstractBytecodeListingTestForSourceRetention
-import org.jetbrains.kotlin.annotation.processing.test.wrappers.AbstractAnnotationProcessingTest
 import org.jetbrains.kotlin.asJava.AbstractCompilerLightClassTest
 import org.jetbrains.kotlin.cfg.AbstractControlFlowTest
 import org.jetbrains.kotlin.cfg.AbstractDataFlowTest
@@ -157,9 +154,10 @@ import org.jetbrains.kotlin.jvm.runtime.AbstractJvmRuntimeDescriptorLoaderTest
 import org.jetbrains.kotlin.kapt3.test.AbstractClassFileToSourceStubConverterTest
 import org.jetbrains.kotlin.kapt3.test.AbstractKotlinKaptContextTest
 import org.jetbrains.kotlin.kdoc.AbstractKDocLexerTest
-import org.jetbrains.kotlin.lang.resolve.android.test.AbstractAndroidBoxTest
-import org.jetbrains.kotlin.lang.resolve.android.test.AbstractAndroidBytecodeShapeTest
-import org.jetbrains.kotlin.lang.resolve.android.test.AbstractAndroidSyntheticPropertyDescriptorTest
+import org.jetbrains.kotlin.android.synthetic.test.AbstractAndroidBoxTest
+import org.jetbrains.kotlin.android.synthetic.test.AbstractAndroidBytecodeShapeTest
+import org.jetbrains.kotlin.android.synthetic.test.AbstractAndroidSyntheticPropertyDescriptorTest
+import org.jetbrains.kotlin.annotation.AbstractAnnotationProcessorBoxTest
 import org.jetbrains.kotlin.modules.xml.AbstractModuleXmlParserTest
 import org.jetbrains.kotlin.multiplatform.AbstractMultiPlatformIntegrationTest
 import org.jetbrains.kotlin.noarg.AbstractBlackBoxCodegenTestForNoArg
@@ -727,6 +725,7 @@ fun main(args: Array<String>) {
             model("refactoring/safeDelete/deleteProperty/kotlinProperty", testMethod = "doPropertyTest")
             model("refactoring/safeDelete/deleteProperty/kotlinPropertyWithJava", testMethod = "doPropertyTestWithJava")
             model("refactoring/safeDelete/deleteProperty/javaPropertyWithKotlin", testMethod = "doJavaPropertyTest")
+            model("refactoring/safeDelete/deleteTypeAlias/kotlinTypeAlias", testMethod = "doTypeAliasTest")
             model("refactoring/safeDelete/deleteTypeParameter/kotlinTypeParameter", testMethod = "doTypeParameterTest")
             model("refactoring/safeDelete/deleteTypeParameter/kotlinTypeParameterWithJava", testMethod = "doTypeParameterTestWithJava")
             model("refactoring/safeDelete/deleteValueParameter/kotlinValueParameter", testMethod = "doValueParameterTest")
@@ -1255,16 +1254,6 @@ fun main(args: Array<String>) {
     testGroup("plugins/plugins-tests/tests", "plugins/annotation-collector/testData") {
         testClass<AbstractAnnotationProcessorBoxTest> {
             model("collectToFile", recursive = false, extension = null)
-        }
-    }
-
-    testGroup("plugins/plugins-tests/tests", "plugins/annotation-processing/testData") {
-        testClass<AbstractAnnotationProcessingTest> {
-            model("wrappers", recursive = true, extension = "kt")
-        }
-
-        testClass<AbstractBytecodeListingTestForSourceRetention> {
-            model("sourceRetention", extension = "kt")
         }
     }
 

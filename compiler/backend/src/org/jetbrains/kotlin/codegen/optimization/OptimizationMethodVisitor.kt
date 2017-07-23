@@ -17,7 +17,7 @@
 package org.jetbrains.kotlin.codegen.optimization
 
 import org.jetbrains.kotlin.codegen.TransformationMethodVisitor
-import org.jetbrains.kotlin.codegen.optimization.boxing.FastPopBackwardPropagationTransformer
+import org.jetbrains.kotlin.codegen.optimization.boxing.StackPeepholeOptimizationsTransformer
 import org.jetbrains.kotlin.codegen.optimization.boxing.RedundantBoxingMethodTransformer
 import org.jetbrains.kotlin.codegen.optimization.boxing.PopBackwardPropagationTransformer
 import org.jetbrains.kotlin.codegen.optimization.common.prepareForEmitting
@@ -47,7 +47,10 @@ class OptimizationMethodVisitor(
     companion object {
         private val MEMORY_LIMIT_BY_METHOD_MB = 50
 
-        private val MANDATORY_METHOD_TRANSFORMER = FixStackWithLabelNormalizationMethodTransformer()
+        private val MANDATORY_METHOD_TRANSFORMER = CompositeMethodTransformer(
+                FixStackWithLabelNormalizationMethodTransformer(),
+                MethodVerifier("AFTER mandatory stack transformations")
+        )
 
         private val OPTIMIZATION_TRANSFORMER = CompositeMethodTransformer(
                 CapturedVarsOptimizationMethodTransformer(),
@@ -55,11 +58,12 @@ class OptimizationMethodVisitor(
                 RedundantCheckCastEliminationMethodTransformer(),
                 ConstantConditionEliminationMethodTransformer(),
                 RedundantBoxingMethodTransformer(),
-                FastPopBackwardPropagationTransformer(),
+                StackPeepholeOptimizationsTransformer(),
                 PopBackwardPropagationTransformer(),
                 DeadCodeEliminationMethodTransformer(),
                 RedundantGotoMethodTransformer(),
-                RedundantNopsCleanupMethodTransformer()
+                RedundantNopsCleanupMethodTransformer(),
+                MethodVerifier("AFTER optimizations")
         )
 
         fun canBeOptimized(node: MethodNode): Boolean {
