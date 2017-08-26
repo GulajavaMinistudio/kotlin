@@ -22,7 +22,7 @@ import com.intellij.openapi.extensions.Extensions
 import com.intellij.openapi.project.Project
 import java.io.File
 import java.net.URLClassLoader
-import kotlin.script.dependencies.DependenciesResolver
+import kotlin.script.experimental.dependencies.DependenciesResolver
 
 interface ScriptTemplatesProvider {
 
@@ -61,7 +61,7 @@ interface ScriptTemplatesProvider {
 }
 
 fun makeScriptDefsFromTemplatesProviderExtensions(project: Project,
-                                                  errorsHandler: ((ScriptTemplatesProvider, Throwable) -> Unit) = { _, ex -> throw ex }
+                                                  errorsHandler: ((ScriptTemplatesProvider, Throwable) -> Unit)
 ): List<KotlinScriptDefinition> =
         makeScriptDefsFromTemplatesProviders(Extensions.getArea(project).getExtensionPoint(ScriptTemplatesProvider.EP_NAME).extensions.asIterable(),
                                              errorsHandler)

@@ -105,6 +105,10 @@ any distributions of the compiler, libraries or plugin:
  - Path: idea/testData/android/lintQuickfix/requiresApi/RequiresApi.java
       - License: Apache 2 (license/third_party/aosp_license.txt)
       - Origin: Copyright (C) 2011-15 The Android Open Source Project
+      
+ - Path: idea/testData/android/lint/IntRange.java
+      - License: Apache 2 (license/third_party/aosp_license.txt)
+      - Origin: Copyright (C) 2011-15 The Android Open Source Project
    
  - Path: libraries/tools/kotlin-gradle-plugin-integration-tests/src/test/resources/testProject/allOpenSpring/src/org/springframework/stereotype/Component.java
       - License: Apache 2 (license/third_party/testdata/spring_license.txt)
@@ -121,6 +125,15 @@ any distributions of the compiler, libraries or plugin:
  - Path: libraries/tools/kotlin-maven-plugin-test/src/it/test-allopen-spring/src/main/java/org/springframework/stereotype/Component.java
       - License: Apache 2 (license/third_party/testdata/spring_license.txt)
       - Origin: Spring Framework, Copyright 2002-2007 the original author or authors.
+
+## Kotlin Tools and Libraries Tests
+
+The following source code is used for testing the Kotlin tools and/or libraries and is not incorporated into 
+any distributions of the tools or libraries:
+
+ - Path: libraries/tools/kotlin-gradle-plugin-integration-tests/src/test/kotlin/org/jetbrains/kotlin/gradle/PluginsDslIT.kt
+      - License: Apache 2 (license/third_party/testdata/gradle_license.txt)
+      - Origin: Gradle, Copyright 2002-2017 Gradle, Inc. 
 
 ## Example Code
 

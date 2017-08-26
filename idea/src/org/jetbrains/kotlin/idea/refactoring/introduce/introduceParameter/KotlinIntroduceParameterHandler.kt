@@ -282,7 +282,7 @@ open class KotlinIntroduceParameterHandler(
                             is KtExpression -> matchedElement
                             is KtStringTemplateEntryWithExpression -> matchedElement.expression
                             else -> null
-                        } as? KtExpression
+                        }
                         matchedExpr?.toRange()
                     }
         }
@@ -451,7 +451,7 @@ interface KotlinIntroduceLambdaParameterHelper: KotlinIntroduceParameterHelper {
 open class KotlinIntroduceLambdaParameterHandler(
         helper: KotlinIntroduceLambdaParameterHelper = KotlinIntroduceLambdaParameterHelper.Default
 ): KotlinIntroduceParameterHandler(helper) {
-    val extractLambdaHelper = object: ExtractionEngineHelper(INTRODUCE_LAMBDA_PARAMETER) {
+    private val extractLambdaHelper = object: ExtractionEngineHelper(INTRODUCE_LAMBDA_PARAMETER) {
         private fun createDialog(
                 project: Project,
                 editor: Editor,

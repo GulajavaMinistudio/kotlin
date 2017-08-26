@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,9 @@
 
 package org.jetbrains.kotlin.resolve.calls.inference.components
 
+import org.jetbrains.kotlin.descriptors.annotations.Annotations
+import org.jetbrains.kotlin.resolve.descriptorUtil.hasExactAnnotation
+import org.jetbrains.kotlin.resolve.descriptorUtil.hasNoInferAnnotation
 import org.jetbrains.kotlin.types.*
 import org.jetbrains.kotlin.types.checker.*
 import org.jetbrains.kotlin.types.typeUtil.builtIns
@@ -29,12 +32,44 @@ abstract class TypeCheckerContextForConstraintSystem : TypeCheckerContext(errorT
     abstract fun addUpperConstraint(typeVariable: TypeConstructor, superType: UnwrappedType)
     abstract fun addLowerConstraint(typeVariable: TypeConstructor, subType: UnwrappedType)
 
-    override fun allowSubtypeViaLowerTypeForCapturedType(subType: SimpleType, superType: NewCapturedType) =
-            !subType.contains { it.anyBound(this::isMyTypeVariable) }
+    override fun getLowerCapturedTypePolicy(subType: SimpleType, superType: NewCapturedType) = when {
+        isMyTypeVariable(subType) -> LowerCapturedTypePolicy.SKIP_LOWER
+        subType.contains { it.anyBound(this::isMyTypeVariable) } -> LowerCapturedTypePolicy.CHECK_ONLY_LOWER
+        else -> LowerCapturedTypePolicy.CHECK_SUBTYPE_AND_LOWER
+    }
 
-    override val sameConstructorPolicy get() = SeveralSupertypesWithSameConstructorPolicy.TAKE_FIRST_FOR_SUBTYPING
-
+    /**
+     * todo: possible we should override this method, because otherwise OR in subtyping transformed to AND in constraint system
+     * Now we cannot do this, because sometimes we have proper intersection type as lower type and if we first supertype,
+     * then we can get wrong result.
+     * override val sameConstructorPolicy get() = SeveralSupertypesWithSameConstructorPolicy.TAKE_FIRST_FOR_SUBTYPING
+     */
     override final fun addSubtypeConstraint(subType: UnwrappedType, superType: UnwrappedType): Boolean? {
+        val hasNoInfer = subType.isTypeVariableWithNoInfer() || superType.isTypeVariableWithNoInfer()
+        if (hasNoInfer) return true
+
+        val hasExact = subType.isTypeVariableWithExact() || superType.isTypeVariableWithExact()
+
+        // we should strip annotation's because we have incorporation operation and they should be not affected
+        val mySubType = if (hasExact) subType.replaceAnnotations(Annotations.EMPTY) else subType
+        val mySuperType = if (hasExact) superType.replaceAnnotations(Annotations.EMPTY) else superType
+
+        val result = internalAddSubtypeConstraint(mySubType, mySuperType)
+        if (!hasExact) return result
+
+        val result2 = internalAddSubtypeConstraint(mySuperType, mySubType)
+
+        if (result == null && result2 == null) return null
+        return (result ?: true) && (result2 ?: true)
+    }
+
+    private fun UnwrappedType.isTypeVariableWithExact() =
+            anyBound(this@TypeCheckerContextForConstraintSystem::isMyTypeVariable) && hasExactAnnotation()
+
+    private fun UnwrappedType.isTypeVariableWithNoInfer() =
+            anyBound(this@TypeCheckerContextForConstraintSystem::isMyTypeVariable) && hasNoInferAnnotation()
+
+    private fun internalAddSubtypeConstraint(subType: UnwrappedType, superType: UnwrappedType): Boolean? {
         assertInputTypes(subType, superType)
 
         var answer: Boolean? = null
@@ -56,7 +91,7 @@ abstract class TypeCheckerContextForConstraintSystem : TypeCheckerContext(errorT
      * Foo <: T? <=> Foo & Any <: T
      * Foo <: T -- leave as is
      */
-    fun simplifyLowerConstraint(typeVariable: UnwrappedType, subType: UnwrappedType): Boolean {
+    private fun simplifyLowerConstraint(typeVariable: UnwrappedType, subType: UnwrappedType): Boolean {
         @Suppress("NAME_SHADOWING")
         val typeVariable = typeVariable.upperIfFlexible()
 
@@ -75,7 +110,7 @@ abstract class TypeCheckerContextForConstraintSystem : TypeCheckerContext(errorT
      * T? <: Foo <=> T <: Foo && Nothing? <: Foo
      * T  <: Foo -- leave as is
      */
-    fun simplifyUpperConstraint(typeVariable: UnwrappedType, superType: UnwrappedType): Boolean {
+    private fun simplifyUpperConstraint(typeVariable: UnwrappedType, superType: UnwrappedType): Boolean {
         @Suppress("NAME_SHADOWING")
         val typeVariable = typeVariable.lowerIfFlexible()
 
@@ -83,18 +118,14 @@ abstract class TypeCheckerContextForConstraintSystem : TypeCheckerContext(errorT
 
         if (typeVariable.isMarkedNullable) {
             // here is important that superType is singleClassifierType
-            return if (superType.anyBound(this::isMyTypeVariable)) {
-                simplifyLowerConstraint(superType, typeVariable)
-            }
-            else {
+            return superType.anyBound(this::isMyTypeVariable) ||
                 isSubtypeOfByTypeChecker(typeVariable.builtIns.nullableNothingType, superType)
-            }
         }
 
         return true
     }
 
-    fun simplifyConstraintForPossibleIntersectionSubType(subType: UnwrappedType, superType: UnwrappedType): Boolean? {
+    private fun simplifyConstraintForPossibleIntersectionSubType(subType: UnwrappedType, superType: UnwrappedType): Boolean? {
         @Suppress("NAME_SHADOWING")
         val subType = subType.lowerIfFlexible()
 
@@ -111,6 +142,25 @@ abstract class TypeCheckerContextForConstraintSystem : TypeCheckerContext(errorT
         // todo: may be we can do better then that.
         if (notTypeVariables.isNotEmpty() && NewKotlinTypeChecker.isSubtypeOf(intersectTypes(notTypeVariables), superType)) {
             return true
+        }
+
+//       Consider the following example:
+//      fun <T> id(x: T): T = x
+//      fun <S> id2(x: S?, y: S): S = y
+//
+//      fun checkLeftAssoc(a: Int?) : Int {
+//          return id2(id(a), 3)
+//      }
+//
+//      fun box() : String {
+//          return "OK"
+//      }
+//
+//      here we try to add constraint {Any & T} <: S from `id(a)`
+//      Previously we thought that if `Any` isn't a subtype of S => T <: S, which is wrong, now we use weaker upper constraint
+//      TODO: rethink, maybe we should take nullability into account somewhere else
+        if (notTypeVariables.any { NullabilityChecker.isSubtypeOfAny(it) }) {
+            return typeVariables.all { simplifyUpperConstraint(it, superType.makeNullableAsSpecified(true)) }
         }
 
         return typeVariables.all { simplifyUpperConstraint(it, superType) }

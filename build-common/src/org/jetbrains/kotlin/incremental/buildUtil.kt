@@ -43,13 +43,21 @@ import java.util.*
 fun Iterable<File>.javaSourceRoots(roots: Iterable<File>): Iterable<File> =
         filter(File::isJavaFile).mapNotNull { findSrcDirRoot(it, roots) }
 
-fun makeModuleFile(name: String, isTest: Boolean, outputDir: File, sourcesToCompile: Iterable<File>, javaSourceRoots: Iterable<File>, classpath: Iterable<File>, friendDirs: Iterable<File>): File {
+fun makeModuleFile(
+        name: String,
+        isTest: Boolean,
+        outputDir: File,
+        sourcesToCompile: Iterable<File>,
+        javaSourceRoots: Iterable<JvmSourceRoot>,
+        classpath: Iterable<File>,
+        friendDirs: Iterable<File>
+): File {
     val builder = KotlinModuleXmlBuilder()
     builder.addModule(
             name,
             outputDir.absolutePath,
             sourcesToCompile,
-            javaSourceRoots.map { JvmSourceRoot(it) },
+            javaSourceRoots,
             classpath,
             null,
             "java-production",
@@ -70,8 +78,8 @@ fun makeCompileServices(
         compilationCanceledStatus: CompilationCanceledStatus?
 ): Services =
     with(Services.Builder()) {
-        register(IncrementalCompilationComponents::class.java, 
-                 IncrementalCompilationComponentsImpl(incrementalCaches, lookupTracker))
+        register(LookupTracker::class.java, lookupTracker)
+        register(IncrementalCompilationComponents::class.java, IncrementalCompilationComponentsImpl(incrementalCaches))
         compilationCanceledStatus?.let {
             register(CompilationCanceledStatus::class.java, it)
         }
@@ -79,7 +87,7 @@ fun makeCompileServices(
     }
 
 fun makeLookupTracker(parentLookupTracker: LookupTracker = LookupTracker.DO_NOTHING): LookupTracker =
-        if (IncrementalCompilation.isExperimental()) LookupTrackerImpl(parentLookupTracker)
+        if (IncrementalCompilation.isEnabled()) LookupTrackerImpl(parentLookupTracker)
         else parentLookupTracker
 
 fun<Target> makeIncrementalCachesMap(

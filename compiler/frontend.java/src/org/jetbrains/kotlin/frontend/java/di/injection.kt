@@ -19,7 +19,7 @@ package org.jetbrains.kotlin.frontend.java.di
 import com.intellij.openapi.project.Project
 import com.intellij.psi.search.GlobalSearchScope
 import org.jetbrains.kotlin.builtins.JvmBuiltInsPackageFragmentProvider
-import org.jetbrains.kotlin.config.AnalysisFlags
+import org.jetbrains.kotlin.config.AnalysisFlag
 import org.jetbrains.kotlin.config.JvmTarget
 import org.jetbrains.kotlin.config.LanguageFeature
 import org.jetbrains.kotlin.config.LanguageVersionSettings
@@ -29,11 +29,11 @@ import org.jetbrains.kotlin.descriptors.ModuleDescriptor
 import org.jetbrains.kotlin.descriptors.PackagePartProvider
 import org.jetbrains.kotlin.frontend.di.configureModule
 import org.jetbrains.kotlin.incremental.components.LookupTracker
-import org.jetbrains.kotlin.load.java.*
+import org.jetbrains.kotlin.load.java.AbstractJavaClassFinder
+import org.jetbrains.kotlin.load.java.InternalFlexibleTypeTransformer
+import org.jetbrains.kotlin.load.java.JavaClassFinderImpl
 import org.jetbrains.kotlin.load.java.components.*
 import org.jetbrains.kotlin.load.java.lazy.ModuleClassResolver
-import org.jetbrains.kotlin.load.java.sam.SamConversionResolverImpl
-import org.jetbrains.kotlin.load.java.sam.SamWithReceiverResolver
 import org.jetbrains.kotlin.load.kotlin.DeserializationComponentsForJava
 import org.jetbrains.kotlin.load.kotlin.VirtualFileFinderFactory
 import org.jetbrains.kotlin.platform.JvmBuiltIns
@@ -64,8 +64,6 @@ private fun StorageComponentContainer.configureJavaTopDownAnalysis(
     useImpl<SignaturePropagatorImpl>()
     useImpl<TraceBasedErrorReporter>()
     useImpl<PsiBasedExternalAnnotationResolver>()
-    useInstance(SamWithReceiverResolver())
-    useImpl<SamConversionResolverImpl>()
     useInstance(InternalFlexibleTypeTransformer)
 
     useImpl<CompilerDeserializationConfiguration>()
@@ -103,12 +101,7 @@ fun createContainerForLazyResolveWithJava(
 
     useInstance(languageVersionSettings)
 
-    if (languageVersionSettings.isFlagEnabled(AnalysisFlags.loadJsr305Annotations)) {
-        useImpl<AnnotationTypeQualifierResolverImpl>()
-    }
-    else {
-        useInstance(AnnotationTypeQualifierResolver.Empty)
-    }
+    useInstance(languageVersionSettings.getFlag(AnalysisFlag.jsr305GlobalState))
 
     if (useBuiltInsProvider) {
         useInstance((moduleContext.module.builtIns as JvmBuiltIns).settings)

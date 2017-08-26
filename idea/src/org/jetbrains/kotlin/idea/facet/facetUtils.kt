@@ -35,14 +35,14 @@ import org.jetbrains.kotlin.idea.compiler.configuration.KotlinCommonCompilerArgu
 import org.jetbrains.kotlin.idea.compiler.configuration.KotlinCompilerSettings
 import org.jetbrains.kotlin.idea.util.application.runWriteAction
 import org.jetbrains.kotlin.idea.versions.*
-import java.lang.reflect.Field
+import kotlin.reflect.KProperty1
 
 private fun getDefaultTargetPlatform(module: Module, rootModel: ModuleRootModel?): TargetPlatformKind<*> {
-    if (getRuntimeLibraryVersions(module, rootModel, TargetPlatformKind.JavaScript).isNotEmpty()) {
-        return TargetPlatformKind.JavaScript
-    }
-    if (getRuntimeLibraryVersions(module, rootModel, TargetPlatformKind.Common).isNotEmpty()) {
-        return TargetPlatformKind.Common
+    for (platform in TargetPlatformKind.ALL_PLATFORMS) {
+        if (platform.version == TargetPlatformVersion.NoVersion &&
+            getRuntimeLibraryVersions(module, rootModel, platform).isNotEmpty()) {
+            return platform
+        }
     }
 
     val sdk = ((rootModel ?: ModuleRootManager.getInstance(module))).sdk
@@ -200,16 +200,14 @@ fun parseCompilerArgumentsToFacet(
         kotlinFacet: KotlinFacet,
         modelsProvider: IdeModifiableModelsProvider
 ) {
-    val argumentArray = arguments.toTypedArray()
-
     with(kotlinFacet.configuration.settings) {
         val compilerArguments = this.compilerArguments ?: return
 
         val defaultCompilerArguments = compilerArguments::class.java.newInstance()
-        parseCommandLineArguments(defaultArguments.toTypedArray(), defaultCompilerArguments)
+        parseCommandLineArguments(defaultArguments, defaultCompilerArguments)
         defaultCompilerArguments.convertPathsToSystemIndependent()
 
-        parseCommandLineArguments(argumentArray, compilerArguments)
+        parseCommandLineArguments(arguments, compilerArguments)
 
         compilerArguments.convertPathsToSystemIndependent()
 
@@ -223,7 +221,8 @@ fun parseCompilerArgumentsToFacet(
         val primaryFields = compilerArguments.primaryFields
         val ignoredFields = compilerArguments.ignoredFields
 
-        fun exposeAsAdditionalArgument(field: Field) = field.name !in primaryFields && field.get(compilerArguments) != field.get(defaultCompilerArguments)
+        fun exposeAsAdditionalArgument(property: KProperty1<CommonCompilerArguments, Any?>) =
+                property.name !in primaryFields && property.get(compilerArguments) != property.get(defaultCompilerArguments)
 
         val additionalArgumentsString = with(compilerArguments::class.java.newInstance()) {
             copyFieldsSatisfying(compilerArguments, this) { exposeAsAdditionalArgument(it) && it.name !in ignoredFields }

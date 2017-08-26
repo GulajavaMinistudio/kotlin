@@ -413,6 +413,11 @@ class CallableBuilder(val config: CallableBuilderConfiguration) {
             typeCandidates[typeInfo]?.forEach { it.render(typeParameterNameMap, fakeFunction) }
         }
 
+        private fun isInsideInnerOrLocalClass(): Boolean {
+            val classOrObject = containingElement.getNonStrictParentOfType<KtClassOrObject>()
+            return classOrObject is KtClass && (classOrObject.isInner() || classOrObject.isLocal)
+        }
+
         private fun createDeclarationSkeleton(): KtNamedDeclaration {
             with (config) {
                 val assignmentToReplace =
@@ -490,13 +495,14 @@ class CallableBuilder(val config: CallableBuilderConfiguration) {
                             val safeName = name.quoteIfNeeded()
                             when (kind) {
                                 ClassKind.ENUM_ENTRY -> {
-                                    if (!(targetParent is KtClass && targetParent.isEnum())) throw AssertionError("Enum class expected: ${targetParent.text}")
+                                    val targetParent = applicableParents.singleOrNull()
+                                    if (!(targetParent is KtClass && targetParent.isEnum())) throw AssertionError("Enum class expected: ${targetParent?.text}")
                                     val hasParameters = targetParent.primaryConstructorParameters.isNotEmpty()
                                     psiFactory.createEnumEntry("$safeName${if (hasParameters) "()" else " "}")
                                 }
                                 else -> {
                                     val openMod = if (open) "open " else ""
-                                    val innerMod = if (inner) "inner " else ""
+                                    val innerMod = if (inner || isInsideInnerOrLocalClass()) "inner " else ""
                                     val typeParamList = when (kind) {
                                         ClassKind.PLAIN_CLASS, ClassKind.INTERFACE -> "<>"
                                         else -> ""
@@ -580,7 +586,6 @@ class CallableBuilder(val config: CallableBuilderConfiguration) {
             if (returnTypeRefs.isNotEmpty()) {
                 val returnType = typeCandidates[callableInfo.returnTypeInfo]!!.getTypeByRenderedType(
                         returnTypeRefs.map { it.text }
-                        ?: throw AssertionError("Expression for return type shouldn't be empty: declaration = ${declaration.text}")
                 )
                 if (returnType != null) {
                     // user selected a given type
@@ -597,7 +602,6 @@ class CallableBuilder(val config: CallableBuilderConfiguration) {
                 if (parameterTypeRef != null) {
                     val parameterType = parameterTypeExpressions[i].typeCandidates.getTypeByRenderedType(
                             listOf(parameterTypeRef.text)
-                            ?: throw AssertionError("Expression for parameter type shouldn't be empty: declaration = ${declaration.text}")
                     )
                     if (parameterType != null) {
                         replaceWithLongerName(listOf(parameterTypeRef), parameterType)

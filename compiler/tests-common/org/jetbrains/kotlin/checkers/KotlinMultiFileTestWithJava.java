@@ -29,6 +29,7 @@ import org.jetbrains.kotlin.config.ContentRootsKt;
 import org.jetbrains.kotlin.config.JVMConfigurationKeys;
 import org.jetbrains.kotlin.script.StandardScriptDefinition;
 import org.jetbrains.kotlin.test.ConfigurationKind;
+import org.jetbrains.kotlin.test.InTextDirectivesUtils;
 import org.jetbrains.kotlin.test.KotlinTestUtils;
 import org.jetbrains.kotlin.test.TestJdkKind;
 import org.jetbrains.kotlin.test.testFramework.KtUsefulTestCase;
@@ -40,7 +41,7 @@ import java.util.List;
 import java.util.Map;
 
 public abstract class KotlinMultiFileTestWithJava<M, F> extends KtUsefulTestCase {
-    private File javaFilesDir;
+    protected File javaFilesDir;
     private File kotlinSourceRoot;
 
     @Override
@@ -73,18 +74,33 @@ public abstract class KotlinMultiFileTestWithJava<M, F> extends KtUsefulTestCase
     }
 
     @NotNull
-    protected KotlinCoreEnvironment createEnvironment() {
+    protected KotlinCoreEnvironment createEnvironment(@NotNull File file) {
         CompilerConfiguration configuration = KotlinTestUtils.newConfiguration(
                 getConfigurationKind(),
-                getTestJdkKind(),
+                getTestJdkKind(file),
                 CollectionsKt.plus(Collections.singletonList(KotlinTestUtils.getAnnotationsJar()), getExtraClasspath()),
-                Collections.singletonList(javaFilesDir)
+                isJavaSourceRootNeeded() ? Collections.singletonList(javaFilesDir) : Collections.emptyList()
         );
-        configuration.add(JVMConfigurationKeys.SCRIPT_DEFINITIONS, StandardScriptDefinition.INSTANCE);
+       configuration.add(JVMConfigurationKeys.SCRIPT_DEFINITIONS, StandardScriptDefinition.INSTANCE);
         if (isKotlinSourceRootNeeded()) {
             ContentRootsKt.addKotlinSourceRoot(configuration, kotlinSourceRoot.getPath());
         }
-        return KotlinCoreEnvironment.createForTests(getTestRootDisposable(), configuration, getEnvironmentConfigFiles());
+
+        KotlinCoreEnvironment environment =
+                KotlinCoreEnvironment.createForTests(getTestRootDisposable(), configuration, getEnvironmentConfigFiles());
+        performCustomConfiguration(
+                environment
+        );
+
+        return environment;
+    }
+
+    protected boolean isJavaSourceRootNeeded() {
+        return true;
+    }
+
+    protected void performCustomConfiguration(@NotNull KotlinCoreEnvironment environment) {
+
     }
 
     @NotNull
@@ -93,8 +109,10 @@ public abstract class KotlinMultiFileTestWithJava<M, F> extends KtUsefulTestCase
     }
 
     @NotNull
-    protected TestJdkKind getTestJdkKind() {
-        return TestJdkKind.MOCK_JDK;
+    protected TestJdkKind getTestJdkKind(@NotNull File file) {
+        return InTextDirectivesUtils.isDirectiveDefined(FilesKt.readText(file, Charsets.UTF_8), "FULL_JDK")
+               ? TestJdkKind.FULL_JDK
+               : TestJdkKind.MOCK_JDK;
     }
 
     @NotNull

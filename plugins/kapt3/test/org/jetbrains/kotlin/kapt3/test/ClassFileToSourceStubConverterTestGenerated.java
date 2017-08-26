@@ -186,6 +186,12 @@ public class ClassFileToSourceStubConverterTestGenerated extends AbstractClassFi
         doTest(fileName);
     }
 
+    @TestMetadata("kt18682.kt")
+    public void testKt18682() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("plugins/kapt3/testData/converter/kt18682.kt");
+        doTest(fileName);
+    }
+
     @TestMetadata("mapEntry.kt")
     public void testMapEntry() throws Exception {
         String fileName = KotlinTestUtils.navigationMetadata("plugins/kapt3/testData/converter/mapEntry.kt");
@@ -219,6 +225,18 @@ public class ClassFileToSourceStubConverterTestGenerated extends AbstractClassFi
     @TestMetadata("nestedClasses.kt")
     public void testNestedClasses() throws Exception {
         String fileName = KotlinTestUtils.navigationMetadata("plugins/kapt3/testData/converter/nestedClasses.kt");
+        doTest(fileName);
+    }
+
+    @TestMetadata("nestedClasses2.kt")
+    public void testNestedClasses2() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("plugins/kapt3/testData/converter/nestedClasses2.kt");
+        doTest(fileName);
+    }
+
+    @TestMetadata("nestedClassesNonRootPackage.kt")
+    public void testNestedClassesNonRootPackage() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("plugins/kapt3/testData/converter/nestedClassesNonRootPackage.kt");
         doTest(fileName);
     }
 

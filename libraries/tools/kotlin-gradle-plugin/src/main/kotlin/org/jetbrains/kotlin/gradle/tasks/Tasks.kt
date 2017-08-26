@@ -20,6 +20,7 @@ import org.gradle.api.Project
 import org.gradle.api.Task
 import org.gradle.api.file.SourceDirectorySet
 import org.gradle.api.logging.Logger
+import org.gradle.api.plugins.BasePluginConvention
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.SourceTask
 import org.gradle.api.tasks.TaskAction
@@ -94,7 +95,6 @@ abstract class AbstractKotlinCompile<T : CommonCompilerArguments>() : AbstractKo
             field = value
             logger.kotlinDebug { "Set $this.incremental=$value" }
             System.setProperty("kotlin.incremental.compilation", value.toString())
-            System.setProperty("kotlin.incremental.compilation.experimental", value.toString())
         }
 
     private lateinit var destinationDirProvider: Lazy<File>
@@ -132,15 +132,37 @@ abstract class AbstractKotlinCompile<T : CommonCompilerArguments>() : AbstractKo
     internal var friendTaskName: String? = null
     internal var javaOutputDir: File? = null
     internal var sourceSetName: String by Delegates.notNull()
+
+    @get:Input
     internal val moduleName: String
-            get() = "${project.name}_$sourceSetName"
+        get() {
+            val baseName = project.convention.findPlugin(BasePluginConvention::class.java)?.archivesBaseName
+                    ?: project.name
+            val suffix = if (sourceSetName == "main") "" else "_$sourceSetName"
+            return "$baseName$suffix"
+        }
 
     @Suppress("UNCHECKED_CAST")
     protected val friendTask: AbstractKotlinCompile<T>?
             get() = friendTaskName?.let { project.tasks.findByName(it) } as? AbstractKotlinCompile<T>
 
+    /** Classes directories that are not produced by this task but should be consumed by
+     * other tasks that have this one as a [friendTask]. */
+    private val attachedClassesDirs: MutableList<Lazy<File?>> = mutableListOf()
+
+    /** Registers the directory provided by the [provider] as attached, meaning that the directory should
+     * be consumed as a friend classes directory by other tasks that have this task as a [friendTask]. */
+    fun attachClassesDir(provider: () -> File?) {
+        attachedClassesDirs += lazy(provider)
+    }
+
     var friendPaths: Lazy<Array<String>?> = lazy {
-        friendTask?.run { arrayOf((javaOutputDir ?: destinationDir).absolutePath) }
+        friendTask?.let { friendTask ->
+            mutableListOf<String>().apply {
+                add((friendTask.javaOutputDir ?: friendTask.destinationDir).absolutePath)
+                addAll(friendTask.attachedClassesDirs.mapNotNull { it.value?.absolutePath })
+            }.toTypedArray()
+        }
     }
 
     override fun compile() {
@@ -196,7 +218,6 @@ open class KotlinCompile : AbstractKotlinCompile<K2JVMCompilerArguments>(), Kotl
         get() = File(File(project.buildDir, KOTLIN_BUILD_DIR_NAME), name).apply { mkdirs() }
     private val cacheVersions by lazy {
         listOf(normalCacheVersion(taskBuildDirectory),
-               experimentalCacheVersion(taskBuildDirectory),
                dataContainerCacheVersion(taskBuildDirectory),
                gradleCacheVersion(taskBuildDirectory))
     }
@@ -210,6 +231,15 @@ open class KotlinCompile : AbstractKotlinCompile<K2JVMCompilerArguments>(), Kotl
     private var kaptAnnotationsFileUpdater: AnnotationFileUpdater? = null
 
     val kaptOptions = KaptOptions()
+
+    /** A package prefix that is used for locating Java sources in a directory structure with non-full-depth packages.
+     *
+     * Example: a Java source file with `package com.example.my.package` is located in directory `src/main/java/my/package`.
+     * Then, for the Kotlin compilation to locate the source file, use package prefix `"com.example"` */
+    var javaPackagePrefix: String? = null
+
+    @get:Input
+    internal val javaPackagePrefixInputString get() = javaPackagePrefix ?: ""
 
     internal val pluginOptions = CompilerPluginOptions()
     internal var artifactDifferenceRegistryProvider: ArtifactDifferenceRegistryProvider? = null
@@ -281,7 +311,13 @@ open class KotlinCompile : AbstractKotlinCompile<K2JVMCompilerArguments>(), Kotl
         }
 
         try {
-            val exitCode = compilerRunner.runJvmCompiler(sourceRoots.kotlinSourceFiles, sourceRoots.javaSourceRoots, args, environment)
+            val exitCode = compilerRunner.runJvmCompiler(
+                    sourceRoots.kotlinSourceFiles,
+                    sourceRoots.javaSourceRoots,
+                    javaPackagePrefix,
+                    args,
+                    environment)
+
             processCompilerExitCode(exitCode)
             artifactDifferenceRegistryProvider?.withRegistry(reporter) {
                 it.flush(true)

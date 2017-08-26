@@ -20,6 +20,7 @@ import com.intellij.util.io.PersistentEnumeratorBase
 import org.jetbrains.kotlin.annotation.AnnotationFileUpdater
 import org.jetbrains.kotlin.build.GeneratedFile
 import org.jetbrains.kotlin.build.GeneratedJvmClass
+import org.jetbrains.kotlin.build.JvmSourceRoot
 import org.jetbrains.kotlin.cli.common.ExitCode
 import org.jetbrains.kotlin.cli.common.arguments.K2JVMCompilerArguments
 import org.jetbrains.kotlin.cli.common.messages.CompilerMessageLocation
@@ -59,7 +60,9 @@ fun makeIncrementally(
     val kotlinFiles = sourceFiles.filter { it.extension.toLowerCase() in kotlinExtensions }
 
     withIC {
-        val compiler = IncrementalJvmCompilerRunner(cachesDir, /* javaSourceRoots = */sourceRoots.toSet(), versions, reporter)
+        val compiler = IncrementalJvmCompilerRunner(cachesDir,
+                                                    sourceRoots.map { JvmSourceRoot(it, null) }.toSet(),
+                                                    versions, reporter)
         compiler.compile(kotlinFiles, args, messageCollector) {
             it.incrementalCache.sourceSnapshotMap.compareAndUpdate(sourceFiles)
         }
@@ -71,32 +74,28 @@ private object EmptyICReporter : ICReporter {
     }
 }
 
-inline fun <R> withIC(fn: ()->R): R {
+inline fun <R> withIC(enabled: Boolean = true, fn: ()->R): R {
     val isEnabledBackup = IncrementalCompilation.isEnabled()
-    val isExperimentalBackup = IncrementalCompilation.isExperimental()
-    IncrementalCompilation.setIsEnabled(true)
-    IncrementalCompilation.setIsExperimental(true)
+    IncrementalCompilation.setIsEnabled(enabled)
 
     try {
         return fn()
     }
     finally {
         IncrementalCompilation.setIsEnabled(isEnabledBackup)
-        IncrementalCompilation.setIsExperimental(isExperimentalBackup)
     }
 }
 
 class IncrementalJvmCompilerRunner(
         workingDir: File,
-        private val javaSourceRoots: Set<File>,
+        private val javaSourceRoots: Set<JvmSourceRoot>,
         private val cacheVersions: List<CacheVersion>,
         private val reporter: ICReporter,
         private var kaptAnnotationsFileUpdater: AnnotationFileUpdater? = null,
         private val artifactChangesProvider: ArtifactChangesProvider? = null,
         private val changesRegistry: ChangesRegistry? = null
 ) {
-    var anyClassesCompiled: Boolean = false
-            private set
+    private var anyClassesCompiled: Boolean = false
     private val cacheDirectory = File(workingDir, CACHES_DIR_NAME)
     private val dirtySourcesSinceLastTimeFile = File(workingDir, DIRTY_SOURCES_FILE_NAME)
     private val lastBuildInfoFile = File(workingDir, LAST_BUILD_INFO_FILE_NAME)
@@ -107,7 +106,7 @@ class IncrementalJvmCompilerRunner(
             messageCollector: MessageCollector,
             getChangedFiles: (IncrementalCachesManager)->ChangedFiles
     ): ExitCode {
-        val targetId = TargetId(name = args.moduleName, type = "java-production")
+        val targetId = TargetId(name = args.moduleName!!, type = "java-production")
         var caches = IncrementalCachesManager(targetId, cacheDirectory, File(args.destination), reporter)
 
         fun onError(e: Exception): ExitCode {
@@ -259,7 +258,6 @@ class IncrementalJvmCompilerRunner(
             messageCollector: MessageCollector
     ): ExitCode {
         assert(IncrementalCompilation.isEnabled()) { "Incremental compilation is not enabled" }
-        assert(IncrementalCompilation.isExperimental()) { "Experimental incremental compilation is not enabled" }
 
         val allGeneratedFiles = hashSetOf<GeneratedFile<TargetId>>()
         val dirtySources: MutableList<File>
@@ -274,7 +272,6 @@ class IncrementalJvmCompilerRunner(
                 // there is no point in updating annotation file since all files will be compiled anyway
                 kaptAnnotationsFileUpdater = null
             }
-            else -> throw IllegalStateException("Unknown CompilationMode ${compilationMode::class.java}")
         }
 
         val currentBuildInfo = BuildInfo(startTS = System.currentTimeMillis())
@@ -415,7 +412,7 @@ class IncrementalJvmCompilerRunner(
         val compiler = K2JVMCompiler()
         val outputDir = args.destinationAsFile
         val classpath = args.classpathAsList
-        val moduleFile = makeModuleFile(args.moduleName,
+        val moduleFile = makeModuleFile(args.moduleName!!,
                 isTest = false,
                 outputDir = outputDir,
                 sourcesToCompile = sourcesToCompile,
@@ -476,5 +473,5 @@ var K2JVMCompilerArguments.destinationAsFile: File
         set(value) { destination = value.path }
 
 var K2JVMCompilerArguments.classpathAsList: List<File>
-    get() = classpath.split(File.pathSeparator).map(::File)
+    get() = classpath!!.split(File.pathSeparator).map(::File)
     set(value) { classpath = value.joinToString(separator = File.pathSeparator, transform = { it.path }) }

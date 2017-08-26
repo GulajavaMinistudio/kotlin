@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,16 +18,13 @@ package org.jetbrains.kotlin.resolve.calls.tower
 
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.Call
-import org.jetbrains.kotlin.resolve.calls.model.KotlinCallKind
 import org.jetbrains.kotlin.resolve.calls.CallTransformer
-import org.jetbrains.kotlin.resolve.calls.callResolverUtil.isConventionCall
-import org.jetbrains.kotlin.resolve.calls.callResolverUtil.isInfixCall
-import org.jetbrains.kotlin.resolve.calls.callResolverUtil.isSuperOrDelegatingConstructorCall
 import org.jetbrains.kotlin.resolve.calls.model.*
 import org.jetbrains.kotlin.resolve.calls.smartcasts.DataFlowInfo
 import org.jetbrains.kotlin.resolve.calls.tasks.TracingStrategy
 import org.jetbrains.kotlin.resolve.calls.tasks.TracingStrategyForInvoke
 import org.jetbrains.kotlin.resolve.scopes.receivers.ExpressionReceiver
+import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue
 import org.jetbrains.kotlin.util.OperatorNameConventions
 
 val KotlinCall.psiKotlinCall: PSIKotlinCall get() {
@@ -41,6 +38,7 @@ abstract class PSIKotlinCall : KotlinCall {
     abstract val psiCall: Call
     abstract val startingDataFlowInfo: DataFlowInfo
     abstract val resultDataFlowInfo: DataFlowInfo
+    abstract val dataFlowInfoForArguments: DataFlowInfoForArguments
     abstract val tracingStrategy: TracingStrategy
 
     override fun toString() = "$psiCall"
@@ -56,12 +54,9 @@ class PSIKotlinCallImpl(
         override val argumentsInParenthesis: List<KotlinCallArgument>,
         override val externalArgument: KotlinCallArgument?,
         override val startingDataFlowInfo: DataFlowInfo,
-        override val resultDataFlowInfo: DataFlowInfo
-) : PSIKotlinCall() {
-    override val isInfixCall: Boolean get() = isInfixCall(psiCall)
-    override val isOperatorCall: Boolean get() = isConventionCall(psiCall)
-    override val isSuperOrDelegatingConstructorCall: Boolean get() = isSuperOrDelegatingConstructorCall(psiCall)
-}
+        override val resultDataFlowInfo: DataFlowInfo,
+        override val dataFlowInfoForArguments: DataFlowInfoForArguments
+) : PSIKotlinCall()
 
 class PSIKotlinCallForVariable(
         val baseCall: PSIKotlinCallImpl,
@@ -75,20 +70,18 @@ class PSIKotlinCallForVariable(
 
     override val startingDataFlowInfo: DataFlowInfo get() = baseCall.startingDataFlowInfo
     override val resultDataFlowInfo: DataFlowInfo get() = baseCall.startingDataFlowInfo
+    override val dataFlowInfoForArguments: DataFlowInfoForArguments get() = baseCall.dataFlowInfoForArguments
 
     override val tracingStrategy: TracingStrategy get() = baseCall.tracingStrategy
     override val psiCall: Call = CallTransformer.stripCallArguments(baseCall.psiCall).let {
         if (explicitReceiver == null) CallTransformer.stripReceiver(it) else it
     }
-
-    override val isInfixCall: Boolean get() = false
-    override val isOperatorCall: Boolean get() = false
-    override val isSuperOrDelegatingConstructorCall: Boolean get() = false
 }
 
 class PSIKotlinCallForInvoke(
         val baseCall: PSIKotlinCallImpl,
-        override val explicitReceiver: SimpleKotlinCallArgument,
+        val variableCall: KotlinResolutionCandidate,
+        override val explicitReceiver: ReceiverKotlinCallArgument,
         override val dispatchReceiverForInvokeExtension: SimpleKotlinCallArgument?
 ) : PSIKotlinCall() {
     override val callKind: KotlinCallKind get() = KotlinCallKind.FUNCTION
@@ -99,12 +92,9 @@ class PSIKotlinCallForInvoke(
 
     override val startingDataFlowInfo: DataFlowInfo get() = baseCall.startingDataFlowInfo
     override val resultDataFlowInfo: DataFlowInfo get() = baseCall.resultDataFlowInfo
+    override val dataFlowInfoForArguments: DataFlowInfoForArguments get() = baseCall.dataFlowInfoForArguments
     override val psiCall: Call
     override val tracingStrategy: TracingStrategy
-
-    override val isInfixCall: Boolean get() = false
-    override val isOperatorCall: Boolean get() = true
-    override val isSuperOrDelegatingConstructorCall: Boolean get() = false
 
     init {
         val variableReceiver = dispatchReceiverForInvokeExtension ?: explicitReceiver
@@ -112,8 +102,15 @@ class PSIKotlinCallForInvoke(
         val calleeExpression = baseCall.psiCall.calleeExpression!!
 
         psiCall = CallTransformer.CallForImplicitInvoke(
-                explicitExtensionReceiver?.receiver?.receiverValue,
-                variableReceiver.receiver.receiverValue as ExpressionReceiver, baseCall.psiCall, true)
-        tracingStrategy = TracingStrategyForInvoke(calleeExpression, psiCall, variableReceiver.receiver.receiverValue.type)
+                explicitExtensionReceiver?.receiverValue,
+                variableReceiver.receiverValue as ExpressionReceiver, baseCall.psiCall, true)
+        tracingStrategy = TracingStrategyForInvoke(calleeExpression, psiCall, variableReceiver.receiverValue!!.type) // check for type parameters
     }
 }
+
+val ReceiverKotlinCallArgument.receiverValue: ReceiverValue?
+    get() = when (this) {
+        is SimpleKotlinCallArgument -> this.receiver.receiverValue
+        is QualifierReceiverKotlinCallArgument -> this.receiver.classValueReceiver
+        else -> null
+    }

@@ -17,7 +17,7 @@
 package org.jetbrains.kotlin.android.synthetic.idea.res
 
 import com.android.builder.model.SourceProvider
-import com.android.tools.idea.gradle.AndroidGradleModel
+import com.android.tools.idea.gradle.project.model.AndroidModuleModel
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.roots.ProjectRootModificationTracker
 import com.intellij.psi.PsiElement
@@ -28,6 +28,7 @@ import org.jetbrains.android.facet.AndroidFacet
 import org.jetbrains.kotlin.android.synthetic.AndroidConst.SYNTHETIC_PACKAGE_PATH_LENGTH
 import org.jetbrains.kotlin.android.synthetic.idea.AndroidPsiTreeChangePreprocessor
 import org.jetbrains.kotlin.android.synthetic.idea.AndroidXmlVisitor
+import org.jetbrains.kotlin.android.synthetic.idea.androidExtensionsIsExperimental
 import org.jetbrains.kotlin.android.synthetic.res.*
 import org.jetbrains.kotlin.descriptors.ModuleDescriptor
 import org.jetbrains.kotlin.descriptors.PropertyDescriptor
@@ -110,12 +111,39 @@ class IDEAndroidLayoutXmlFileManager(val module: Module) : AndroidLayoutXmlFileM
     private fun SourceProvider.toVariant() = AndroidVariant(name, resDirectories.map { it.canonicalPath })
 
     private fun getAndroidModuleInfo(androidFacet: AndroidFacet): AndroidModule? {
+        if (androidFacet.module.androidExtensionsIsExperimental) {
+            return getAndroidModuleInfoExperimental(androidFacet)
+        }
+
+        val applicationPackage = androidFacet.manifest?.`package`?.toString()
+
+        if (applicationPackage != null) {
+            val mainVariant = androidFacet.mainSourceProvider.toVariant()
+
+            val method = try { androidFacet::class.java.getMethod("getFlavorSourceProviders") } catch (e: NoSuchMethodException) { null }
+            val variants: List<AndroidVariant>? = if (method != null) {
+                val sourceProviders = method.invoke(androidFacet) as List<SourceProvider>?
+                sourceProviders?.map { it.toVariant() } ?: listOf()
+            }
+            else {
+                val model = AndroidModuleModel.get(androidFacet.module)
+                model?.flavorSourceProviders?.map { it.toVariant() } ?: listOf(androidFacet.mainSourceProvider.toVariant())
+            }
+
+            if (variants != null) {
+                return AndroidModule(applicationPackage, listOf(mainVariant) + variants)
+            }
+        }
+        return null
+    }
+
+    private fun getAndroidModuleInfoExperimental(androidFacet: AndroidFacet): AndroidModule? {
         val applicationPackage = androidFacet.manifest?.`package`?.toString() ?: return null
 
         val allResDirectories = androidFacet.getAppResources(true)?.resourceDirs.orEmpty().mapNotNull { it.canonicalPath }
 
         val resDirectoriesForMainVariant = androidFacet.run {
-            val resDirsFromSourceProviders = AndroidGradleModel.get(this.module)?.allSourceProviders.orEmpty()
+            val resDirsFromSourceProviders = AndroidModuleModel.get(this.module)?.allSourceProviders.orEmpty()
                     .filter { it.name != "main" }
                     .flatMap { it.resDirectories }
                     .map { it.canonicalPath }
@@ -125,7 +153,7 @@ class IDEAndroidLayoutXmlFileManager(val module: Module) : AndroidLayoutXmlFileM
 
         val variants = mutableListOf(AndroidVariant("main", resDirectoriesForMainVariant))
 
-        AndroidGradleModel.get(androidFacet.module)?.let { androidGradleModel ->
+        AndroidModuleModel.get(androidFacet.module)?.let { androidGradleModel ->
             androidGradleModel.activeSourceProviders.filter { it.name != "main" }.forEach { sourceProvider ->
                 variants += sourceProvider.toVariant()
             }

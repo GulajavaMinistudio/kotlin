@@ -16,104 +16,111 @@
 
 package org.jetbrains.kotlin.resolve.calls.components
 
-import org.jetbrains.kotlin.builtins.ReflectionTypes
-import org.jetbrains.kotlin.builtins.getReturnTypeFromFunctionType
-import org.jetbrains.kotlin.builtins.isFunctionType
-import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
-import org.jetbrains.kotlin.descriptors.PropertyDescriptor
-import org.jetbrains.kotlin.descriptors.Visibilities
-import org.jetbrains.kotlin.descriptors.annotations.Annotations
+import org.jetbrains.kotlin.builtins.KotlinBuiltIns
+import org.jetbrains.kotlin.resolve.calls.context.CheckArgumentTypesMode
+import org.jetbrains.kotlin.resolve.calls.inference.ConstraintSystemBuilder
+import org.jetbrains.kotlin.resolve.calls.inference.ConstraintSystemOperation
+import org.jetbrains.kotlin.resolve.calls.inference.components.ConstraintInjector
+import org.jetbrains.kotlin.resolve.calls.inference.components.SimpleConstraintSystemImpl
 import org.jetbrains.kotlin.resolve.calls.model.*
-import org.jetbrains.kotlin.types.ErrorUtils
-import org.jetbrains.kotlin.types.KotlinType
+import org.jetbrains.kotlin.resolve.calls.results.FlatSignature
+import org.jetbrains.kotlin.resolve.calls.results.OverloadingConflictResolver
+import org.jetbrains.kotlin.resolve.calls.results.TypeSpecificityComparator
+import org.jetbrains.kotlin.resolve.calls.tower.ImplicitScopeTower
+import org.jetbrains.kotlin.resolve.calls.tower.TowerResolver
 import org.jetbrains.kotlin.types.UnwrappedType
-import org.jetbrains.kotlin.types.typeUtil.builtIns
-import org.jetbrains.kotlin.types.typeUtil.immediateSupertypes
-import org.jetbrains.kotlin.types.typeUtil.isUnit
-import org.jetbrains.kotlin.types.upperIfFlexible
+import org.jetbrains.kotlin.utils.SmartList
 import org.jetbrains.kotlin.utils.addIfNotNull
-import java.util.*
+
+
+class CallableReferenceOverloadConflictResolver(
+        builtIns: KotlinBuiltIns,
+        specificityComparator: TypeSpecificityComparator,
+        statelessCallbacks: KotlinResolutionStatelessCallbacks,
+        constraintInjector: ConstraintInjector
+) : OverloadingConflictResolver<CallableReferenceCandidate>(
+        builtIns,
+        specificityComparator,
+        { it.candidate },
+        { SimpleConstraintSystemImpl(constraintInjector, builtIns) },
+        Companion::createFlatSignature,
+        { null },
+        { statelessCallbacks.isDescriptorFromSource(it) }
+        ) {
+    companion object {
+        private fun createFlatSignature(candidate: CallableReferenceCandidate) =
+                FlatSignature.createFromReflectionType(candidate, candidate.candidate, candidate.numDefaults, candidate.reflectionCandidateType)
+    }
+}
 
 
 class CallableReferenceResolver(
-        val reflectionTypes: ReflectionTypes,
-        val argumentsToParametersMapper: ArgumentsToParametersMapper
+        private val towerResolver: TowerResolver,
+        private val callableReferenceOverloadConflictResolver: CallableReferenceOverloadConflictResolver,
+        private val callComponents: KotlinCallComponents
 ) {
 
-    fun resolvePropertyReference(
-            descriptor: PropertyDescriptor,
-            propertyReference: ChosenCallableReferenceDescriptor,
-            outerCall: KotlinCall,
-            scopeOwnerDescriptor: DeclarationDescriptor
-    ): ResolvedPropertyReference {
-        val mutable = descriptor.isVar && run {
-            val setter = descriptor.setter
-            setter == null || Visibilities.isVisible(propertyReference.candidate.dispatchReceiver?.receiverValue, setter, scopeOwnerDescriptor)
+    fun processCallableReferenceArgument(
+            csBuilder: ConstraintSystemBuilder,
+            resolvedAtom: ResolvedCallableReferenceAtom
+    ) {
+        val argument = resolvedAtom.atom
+        val expectedType = resolvedAtom.expectedType?.let { csBuilder.buildCurrentSubstitutor().safeSubstitute(it) }
+
+        val scopeTower = callComponents.statelessCallbacks.getScopeTowerForCallableReferenceArgument(argument)
+        val candidates = runRHSResolution(scopeTower, argument, expectedType) { checkCallableReference ->
+            csBuilder.runTransaction { checkCallableReference(this); false }
         }
+        val diagnostics = SmartList<KotlinCallDiagnostic>()
 
-        val reflectionType = reflectionTypes.getKPropertyType(Annotations.EMPTY, listOfNotNull(propertyReference.dispatchNotBoundReceiver,
-                                                              propertyReference.extensionNotBoundReceiver), descriptor.type.unwrap(), mutable)
-
-        return ResolvedPropertyReference(outerCall, propertyReference, reflectionType)
-    }
-
-    private fun createFakeArgumentsAndMapArguments(
-            functionReference: ChosenCallableReferenceDescriptor,
-            argumentCount: Int?
-    ): Pair<List<UnwrappedType>, ArgumentsToParametersMapper.ArgumentMapping?> {
-        if (argumentCount == null) {
-            return functionReference.candidate.descriptor.valueParameters.map { it.varargElementType?.unwrap() ?: it.type.unwrap() } to null
+        val chosenCandidate = candidates.singleOrNull()
+        if (chosenCandidate != null) {
+            val (toFreshSubstitutor, diagnostic) = with(chosenCandidate) {
+                csBuilder.checkCallableReference(argument, dispatchReceiver, extensionReceiver, candidate,
+                                                 reflectionCandidateType, expectedType, scopeTower.lexicalScope.ownerDescriptor)
+            }
+            diagnostics.addIfNotNull(diagnostic)
+            chosenCandidate.freshSubstitutor = toFreshSubstitutor
         }
-
-        val fakeArguments = (0..(argumentCount - 1)).map { FakeKotlinCallArgumentForCallableReference(functionReference, it) }
-
-        val argumentsToParametersMapping = argumentsToParametersMapper.mapArguments(fakeArguments, null, functionReference.candidate.descriptor)
-        val parameters = Array<UnwrappedType?>(argumentCount) { null }
-
-        for ((parameter, resolvedArgument) in argumentsToParametersMapping.parameterToCallArgumentMap) {
-            for (argument in resolvedArgument.arguments) {
-                val index = (argument as FakeKotlinCallArgumentForCallableReference).index
-                parameters[index] = parameter.type.unwrap()
+        else {
+            if (candidates.isEmpty()) {
+                diagnostics.add(NoneCallableReferenceCandidates(argument))
+            }
+            else {
+                diagnostics.add(CallableReferenceCandidatesAmbiguity(argument, candidates))
             }
         }
 
-        return parameters.map { it ?: ErrorUtils.createErrorType("Wrong parameters mapping") } to argumentsToParametersMapping
+        // todo -- create this inside CallableReferencesCandidateFactory
+        val subKtArguments = listOfNotNull(buildResolvedKtArgument(argument.lhsResult))
+
+        resolvedAtom.setAnalyzedResults(chosenCandidate, subKtArguments, diagnostics)
     }
 
-    fun resolveFunctionReference(
-            functionReference: ChosenCallableReferenceDescriptor,
-            outerCall: KotlinCall,
-            expectedType: UnwrappedType
-    ): ResolvedFunctionReference {
-        val functionType =
-                if (expectedType.isFunctionType) {
-                    expectedType
-                }
-                else if (ReflectionTypes.isNumberedKFunction(expectedType)) {
-                    expectedType.immediateSupertypes().first { it.isFunctionType }
-                }
-                else {
-                    null
-                }
+    private fun buildResolvedKtArgument(lhsResult: LHSResult): ResolvedAtom? {
+        if (lhsResult !is LHSResult.Expression) return null
+        val lshCallArgument = lhsResult.lshCallArgument
+        return when(lshCallArgument) {
+            is SubKotlinCallArgument -> lshCallArgument.callResult
+            is ExpressionKotlinCallArgument -> ResolvedExpressionAtom(lshCallArgument)
+            else -> unexpectedArgument(lshCallArgument)
+        }
+    }
 
-        val parameterTypes = ArrayList<UnwrappedType>(functionType?.arguments?.size ?: 2)
-        parameterTypes.addIfNotNull(functionReference.dispatchNotBoundReceiver)
-        parameterTypes.addIfNotNull(functionReference.extensionNotBoundReceiver)
-
-        // (A, B, C) -> Int if A -- receiver, then B & C -- parameters
-        // here parameterTypes contains only receivers, all parameters will be added later
-        val argumentCount = functionType?.arguments?.let { it.size - parameterTypes.size - 1 }?.takeIf { it >= 0 }
-        val (parameters, mapping) = createFakeArgumentsAndMapArguments(functionReference, argumentCount)
-        parameterTypes.addAll(parameters)
-
-        val unitExpectedType = functionType?.let(KotlinType::getReturnTypeFromFunctionType)?.takeIf { it.upperIfFlexible().isUnit() }
-        // coercion to unit
-        val returnType = unitExpectedType ?: functionReference.candidate.descriptor.returnType
-                         ?: ErrorUtils.createErrorType("Error return type")
-
-        val kFunctionType = reflectionTypes.getKFunctionType(Annotations.EMPTY, null, parameterTypes, null, returnType, expectedType.builtIns)
-
-        return ResolvedFunctionReference(outerCall, functionReference, kFunctionType, mapping)
+    private fun runRHSResolution(
+            scopeTower: ImplicitScopeTower,
+            callableReference: CallableReferenceKotlinCallArgument,
+            expectedType: UnwrappedType?, // this type can have not fixed type variable inside
+            compatibilityChecker: ((ConstraintSystemOperation) -> Unit) -> Unit // you can run anything throw this operation and all this operation will be rolled back
+    ): Set<CallableReferenceCandidate> {
+        val factory = CallableReferencesCandidateFactory(callableReference, callComponents, scopeTower, compatibilityChecker, expectedType)
+        val processor = createCallableReferenceProcessor(factory)
+        val candidates = towerResolver.runResolve(scopeTower, processor, useOrder = true)
+        return callableReferenceOverloadConflictResolver.chooseMaximallySpecificCandidates(
+                candidates,
+                CheckArgumentTypesMode.CHECK_VALUE_ARGUMENTS,
+                discriminateGenerics = false, // we can't specify generics explicitly for callable references
+                isDebuggerContext = scopeTower.isDebuggerContext)
     }
 }
 

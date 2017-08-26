@@ -71,17 +71,17 @@ abstract class AbstractIncrementalJpsTest(
         private val DEBUG_LOGGING_ENABLED = System.getProperty("debug.logging.enabled") == "true"
     }
 
-    protected open val enableExperimentalIncrementalCompilation = false
-
     protected lateinit var testDataDir: File
     protected lateinit var workDir: File
     protected lateinit var projectDescriptor: ProjectDescriptor
+    // is used to compare lookup dumps in a human readable way (lookup symbols are hashed in an actual lookup storage)
     protected lateinit var lookupsDuringTest: MutableSet<LookupSymbol>
+    private var isICEnabledBackup: Boolean = false
 
     protected var mapWorkingToOriginalFile: MutableMap<File, File> = hashMapOf()
 
     protected open val buildLogFinder: BuildLogFinder
-        get() = BuildLogFinder(isExperimentalEnabled = enableExperimentalIncrementalCompilation)
+        get() = BuildLogFinder()
 
     private fun enableDebugLogging() {
         com.intellij.openapi.diagnostic.Logger.setFactory(TestLoggerFactory::class.java)
@@ -112,7 +112,8 @@ abstract class AbstractIncrementalJpsTest(
     override fun setUp() {
         super.setUp()
         lookupsDuringTest = hashSetOf()
-        IncrementalCompilation.setIsExperimental(enableExperimentalIncrementalCompilation)
+        isICEnabledBackup = IncrementalCompilation.isEnabled()
+        IncrementalCompilation.setIsEnabled(true)
 
         if (DEBUG_LOGGING_ENABLED) {
             enableDebugLogging()
@@ -125,23 +126,19 @@ abstract class AbstractIncrementalJpsTest(
         (AbstractIncrementalJpsTest::projectDescriptor).javaField!![this] = null
         (AbstractIncrementalJpsTest::systemPropertiesBackup).javaField!![this] = null
         lookupsDuringTest.clear()
+        IncrementalCompilation.setIsEnabled(isICEnabledBackup)
         super.tearDown()
     }
 
     protected open val mockConstantSearch: Callbacks.ConstantAffectionResolver?
         get() = null
 
-    private fun createLookupTracker(): TestLookupTracker = TestLookupTracker()
-
-    protected open fun checkLookups(@Suppress("UNUSED_PARAMETER") lookupTracker: LookupTracker, compiledFiles: Set<File>) {
-    }
-
-    private fun build(scope: CompileScopeTestBuilder = CompileScopeTestBuilder.make().allModules(), checkLookups: Boolean = true): MakeResult {
+    private fun build(scope: CompileScopeTestBuilder = CompileScopeTestBuilder.make().allModules()): MakeResult {
         val workDirPath = FileUtil.toSystemIndependentName(workDir.absolutePath)
         val logger = MyLogger(workDirPath)
         projectDescriptor = createProjectDescriptor(BuildLoggingManager(logger))
 
-        val lookupTracker = createLookupTracker()
+        val lookupTracker = TestLookupTracker()
         projectDescriptor.project.setTestingContext(TestingContext(lookupTracker, logger))
 
         try {
@@ -150,12 +147,7 @@ abstract class AbstractIncrementalJpsTest(
             builder.addMessageHandler(buildResult)
             builder.build(scope.build(), false)
 
-            if (checkLookups) {
-                checkLookups(lookupTracker, logger.compiledFiles)
-            }
-
-            val lookups = lookupTracker.lookups.map { LookupSymbol(it.name, it.scopeFqName) }
-            lookupsDuringTest.addAll(lookups)
+            lookupTracker.lookups.mapTo(lookupsDuringTest) { LookupSymbol(it.name, it.scopeFqName) }
 
             if (!buildResult.isSuccessful) {
                 val errorMessages =
@@ -195,7 +187,7 @@ abstract class AbstractIncrementalJpsTest(
     }
 
     private fun rebuild(): MakeResult {
-        return build(CompileScopeTestBuilder.rebuild().allModules(), checkLookups = false)
+        return build(CompileScopeTestBuilder.rebuild().allModules())
     }
 
     private fun rebuildAndCheckOutput(makeOverallResult: MakeResult) {
@@ -278,8 +270,6 @@ abstract class AbstractIncrementalJpsTest(
         else if (!allowNoBuildLogFileInTestData) {
             throw IllegalStateException("No build log file in $testDataDir")
         }
-
-        if (!enableExperimentalIncrementalCompilation && File(testDataDir, "dont-check-caches-in-non-experimental-ic.txt").exists()) return
 
         val lastMakeResult = otherMakeResults.last()
         rebuildAndCheckOutput(lastMakeResult)
@@ -419,8 +409,8 @@ abstract class AbstractIncrementalJpsTest(
 
             moduleNames = nameToModule.keys
         }
-        AbstractKotlinJpsBuildTestCase.addKotlinRuntimeDependency(myProject)
-        AbstractKotlinJpsBuildTestCase.addKotlinTestRuntimeDependency(myProject)
+        AbstractKotlinJpsBuildTestCase.addKotlinStdlibDependency(myProject)
+        AbstractKotlinJpsBuildTestCase.addKotlinTestDependency(myProject)
         return moduleNames
     }
 
@@ -445,7 +435,7 @@ abstract class AbstractIncrementalJpsTest(
         }
 
         override fun buildStarted(context: CompileContext, chunk: ModuleChunk) {
-            if (context.projectDescriptor.project.modules.size > 1) {
+            if (!chunk.isDummy(context) && context.projectDescriptor.project.modules.size > 1) {
                 logLine("Building ${chunk.modules.sortedBy { it.name }.joinToString { it.name }}")
             }
         }

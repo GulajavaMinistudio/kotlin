@@ -19,6 +19,7 @@ package org.jetbrains.kotlin.gradle
 import org.gradle.api.logging.LogLevel
 import org.jetbrains.kotlin.com.intellij.openapi.util.io.FileUtil
 import org.jetbrains.kotlin.gradle.tasks.USING_INCREMENTAL_COMPILATION_MESSAGE
+import org.jetbrains.kotlin.gradle.util.checkBytecodeContains
 import org.jetbrains.kotlin.gradle.util.getFileByName
 import org.jetbrains.kotlin.gradle.util.getFilesByNames
 import org.jetbrains.kotlin.gradle.util.modify
@@ -80,7 +81,7 @@ class KotlinGradleIT: BaseGradleIT() {
 
         project.build("build") {
             assertSuccessful()
-            assertFileExists("build/classes/main/META-INF/kotlinProject_main.kotlin_module")
+            assertFileExists("build/classes/main/META-INF/kotlinProject.kotlin_module")
             assertReportExists()
             assertContains(":compileKotlin", ":compileTestKotlin")
             assertNotContains("Forcing System.gc")
@@ -151,13 +152,13 @@ class KotlinGradleIT: BaseGradleIT() {
 
     @Test
     fun testLogLevelForceGC() {
-        val debugProject = Project("simpleProject", GRADLE_VERSION, minLogLevel = LogLevel.DEBUG)
-        debugProject.build("build") {
+        val debugProject = Project("simpleProject", GRADLE_VERSION, minLogLevel = LogLevel.LIFECYCLE)
+        debugProject.build("build", "-Dkotlin.gradle.test.report.memory.usage=true") {
             assertContains("Forcing System.gc()")
         }
 
-        val infoProject = Project("simpleProject", GRADLE_VERSION, minLogLevel = LogLevel.INFO)
-        infoProject.build("clean", "build") {
+        val infoProject = Project("simpleProject", GRADLE_VERSION, minLogLevel = LogLevel.QUIET)
+        infoProject.build("clean", "build", "-Dkotlin.gradle.test.report.memory.usage=true") {
             assertNotContains("Forcing System.gc()")
         }
     }
@@ -347,7 +348,7 @@ class KotlinGradleIT: BaseGradleIT() {
 
     @Test
     fun testKotlinBuiltins() {
-        val project = Project("kotlinBuiltins", "3.2")
+        val project = Project("kotlinBuiltins", "4.0")
 
         project.build("build") {
             assertSuccessful()
@@ -388,7 +389,7 @@ class KotlinGradleIT: BaseGradleIT() {
             assertFileExists("lib/build/classes/test/foo/PlatformTest.kotlin_metadata")
             assertFileExists("libJvm/build/classes/main/foo/PlatformClass.class")
             assertFileExists("libJvm/build/classes/test/foo/PlatformTest.class")
-            assertFileExists("libJs/build/classes/main/libJs_main.js")
+            assertFileExists("libJs/build/classes/main/libJs.js")
             assertFileExists("libJs/build/classes/test/libJs_test.js")
         }
     }
@@ -556,6 +557,43 @@ class KotlinGradleIT: BaseGradleIT() {
             // Check that the sync output task is not used with Gradle 4.0+ and there's no old Kotlin output layout
             assertNotContains(":copyMainKotlinClasses")
             assertNoSuchFile("build/kotlin-classes")
+        }
+    }
+
+    @Test
+    fun testArchiveBaseNameForModuleName() {
+        val project = Project("simpleProject", "4.0")
+        project.setupWorkingDir()
+
+        val archivesBaseName = "myArchivesBaseName"
+
+        val buildGradle = File(project.projectDir, "build.gradle")
+        buildGradle.appendText("\narchivesBaseName = '$archivesBaseName'")
+
+        // Add top-level members to force generation of the *.kotlin_module files for the two source sets
+        val mainHelloWorldKt = File(project.projectDir, "src/main/kotlin/helloWorld.kt")
+        mainHelloWorldKt.appendText("\nfun topLevelFun() = 1")
+        val deployKotlinSrcKt = File(project.projectDir, "src/deploy/kotlin/kotlinSrc.kt")
+        deployKotlinSrcKt.appendText("\nfun topLevelFun() = 1")
+
+        project.build("build", "compileDeployKotlin") {
+            assertSuccessful()
+            // Main source set should have a *.kotlin_module file without '_main'
+            assertFileExists("build/classes/kotlin/main/META-INF/$archivesBaseName.kotlin_module")
+            assertFileExists("build/classes/kotlin/deploy/META-INF/${archivesBaseName}_deploy.kotlin_module")
+        }
+    }
+
+    @Test
+    fun testJavaPackagePrefix() {
+        val project = Project("javaPackagePrefix", "4.0")
+        project.build("build") {
+            assertSuccessful()
+
+            // Check that the Java source in a non-full-depth package structure was located correctly:
+            checkBytecodeContains(
+                    File(project.projectDir, "build/classes/kotlin/main/my/pack/name/app/MyApp.class"),
+                    "my/pack/name/util/JUtil.util")
         }
     }
 }

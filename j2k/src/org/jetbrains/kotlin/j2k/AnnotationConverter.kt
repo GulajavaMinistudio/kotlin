@@ -66,6 +66,7 @@ class AnnotationConverter(private val converter: Converter) {
         if (owner is PsiDocCommentOwner) {
             val deprecatedAnnotation = convertDeprecatedJavadocTag(owner, target)
             if (deprecatedAnnotation != null) {
+                convertedAnnotations = convertedAnnotations.filter { it.name.name != deprecatedAnnotation.name.name }
                 convertedAnnotations += deprecatedAnnotation
             }
         }
@@ -111,8 +112,9 @@ class AnnotationConverter(private val converter: Converter) {
     }
 
     private fun effectiveAnnotationUseTarget(name: String, target: AnnotationUseTarget?): AnnotationUseTarget? =
-            when (name) {
-                "Deprecated" -> if (target == AnnotationUseTarget.Param) null else target
+            when {
+                name == "Deprecated" &&
+                (target == AnnotationUseTarget.Param || target == AnnotationUseTarget.Field) -> null
                 else -> target
             }
 

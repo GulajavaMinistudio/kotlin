@@ -111,7 +111,10 @@ class KotlinQuickDocumentationProvider : AbstractDocumentationProvider() {
 
     override fun getDocumentationElementForLookupItem(psiManager: PsiManager, `object`: Any?, element: PsiElement?): PsiElement? {
         if (`object` is DeclarationLookupObject) {
-            return `object`.psiElement
+            `object`.psiElement?.let { return it }
+            `object`.descriptor?.let { descriptor ->
+                return DescriptorToSourceUtilsIde.getAnyDeclaration(psiManager.project, descriptor)
+            }
         }
         return null
     }
@@ -329,7 +332,7 @@ class KotlinQuickDocumentationProvider : AbstractDocumentationProvider() {
             }
         }
 
-        fun String.htmlEscape(): String = HtmlEscapers.htmlEscaper().escape(this)
+        private fun String.htmlEscape(): String = HtmlEscapers.htmlEscaper().escape(this)
 
         private inline fun StringBuilder.wrap(prefix: String, postfix: String, crossinline body: () -> Unit) {
             this.append(prefix)

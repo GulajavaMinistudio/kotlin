@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,11 +19,11 @@ package org.jetbrains.kotlin.resolve.calls
 import org.jetbrains.kotlin.builtins.functions.FunctionInvokeDescriptor
 import org.jetbrains.kotlin.diagnostics.Errors
 import org.jetbrains.kotlin.diagnostics.Errors.*
-import org.jetbrains.kotlin.diagnostics.Errors.BadNamedArgumentsTarget.*
+import org.jetbrains.kotlin.diagnostics.Errors.BadNamedArgumentsTarget.INVOKE_ON_FUNCTION_TYPE
+import org.jetbrains.kotlin.diagnostics.Errors.BadNamedArgumentsTarget.NON_KOTLIN_FUNCTION
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.resolve.BindingContext
-import org.jetbrains.kotlin.resolve.BindingTrace
-import org.jetbrains.kotlin.resolve.calls.components.*
+import org.jetbrains.kotlin.resolve.calls.callUtil.getResolvedCall
 import org.jetbrains.kotlin.resolve.calls.context.BasicCallResolutionContext
 import org.jetbrains.kotlin.resolve.calls.inference.model.*
 import org.jetbrains.kotlin.resolve.calls.model.*
@@ -39,9 +39,9 @@ import org.jetbrains.kotlin.resolve.scopes.receivers.ExpressionReceiver
 class DiagnosticReporterByTrackingStrategy(
         val constantExpressionEvaluator: ConstantExpressionEvaluator,
         val context: BasicCallResolutionContext,
-        val trace: BindingTrace,
         val psiKotlinCall: PSIKotlinCall
 ): DiagnosticReporter {
+    private val trace = context.trace as TrackingBindingTrace
     private val tracingStrategy: TracingStrategy get() = psiKotlinCall.tracingStrategy
     private val call: Call get() = psiKotlinCall.psiCall
 
@@ -54,6 +54,7 @@ class DiagnosticReporterByTrackingStrategy(
             VisibilityError::class.java -> tracingStrategy.invisibleMember(trace, (diagnostic as VisibilityError).invisibleMember)
             NoValueForParameter::class.java -> tracingStrategy.noValueForParameter(trace, (diagnostic as NoValueForParameter).parameterDescriptor)
             InstantiationOfAbstractClass::class.java -> tracingStrategy.instantiationOfAbstractClass(trace)
+            AbstractSuperCall::class.java -> tracingStrategy.abstractSuperCall(trace)
         }
     }
 
@@ -94,8 +95,14 @@ class DiagnosticReporterByTrackingStrategy(
         when (diagnostic.javaClass) {
             SmartCastDiagnostic::class.java -> reportSmartCast(diagnostic as SmartCastDiagnostic)
             UnstableSmartCast::class.java -> reportUnstableSmartCast(diagnostic as UnstableSmartCast)
-            TooManyArguments::class.java ->
-                trace.report(TOO_MANY_ARGUMENTS.on(callArgument.psiExpression!!, (diagnostic as TooManyArguments).descriptor))
+            TooManyArguments::class.java -> {
+                val psiExpression = callArgument.psiExpression
+                if (psiExpression != null) {
+                    trace.report(TOO_MANY_ARGUMENTS.on(psiExpression, (diagnostic as TooManyArguments).descriptor))
+                }
+
+                trace.markAsReported()
+            }
             VarargArgumentOutsideParentheses::class.java ->
                 trace.report(VARARG_OUTSIDE_PARENTHESES.on(callArgument.psiExpression!!))
         }
@@ -105,8 +112,10 @@ class DiagnosticReporterByTrackingStrategy(
         val nameReference = callArgument.psiCallArgument.valueArgument.getArgumentName()?.referenceExpression ?:
                            error("Argument name should be not null for argument: $callArgument")
         when (diagnostic.javaClass) {
-            NamedArgumentReference::class.java ->
+            NamedArgumentReference::class.java -> {
                 trace.record(BindingContext.REFERENCE_TARGET, nameReference, (diagnostic as NamedArgumentReference).parameterDescriptor)
+                trace.markAsReported()
+            }
             NameForAmbiguousParameter::class.java -> trace.report(NAME_FOR_AMBIGUOUS_PARAMETER.on(nameReference))
             NameNotFound::class.java -> trace.report(NAMED_PARAMETER_NOT_FOUND.on(nameReference, nameReference))
 
@@ -123,27 +132,41 @@ class DiagnosticReporterByTrackingStrategy(
     }
 
     private fun reportSmartCast(smartCastDiagnostic: SmartCastDiagnostic) {
-        val expressionArgument = smartCastDiagnostic.expressionArgument
-        if (expressionArgument is ExpressionKotlinCallArgumentImpl) {
-            val context = context.replaceDataFlowInfo(expressionArgument.dataFlowInfoBeforeThisArgument)
-            val argumentExpression = KtPsiUtil.getLastElementDeparenthesized(expressionArgument.valueArgument.getArgumentExpression (), context.statementFilter)
-            val dataFlowValue = DataFlowValueFactory.createDataFlowValue(expressionArgument.receiver.receiverValue, context)
-            SmartCastManager.checkAndRecordPossibleCast(
-                    dataFlowValue, smartCastDiagnostic.smartCastType, argumentExpression, context, call,
-                    recordExpressionType = true)
+        val expressionArgument = smartCastDiagnostic.argument
+        val smartCastResult = when (expressionArgument) {
+            is ExpressionKotlinCallArgumentImpl -> {
+                trace.markAsReported()
+                val context = context.replaceDataFlowInfo(expressionArgument.dataFlowInfoBeforeThisArgument)
+                val argumentExpression = KtPsiUtil.getLastElementDeparenthesized(expressionArgument.valueArgument.getArgumentExpression (), context.statementFilter)
+                val dataFlowValue = DataFlowValueFactory.createDataFlowValue(expressionArgument.receiver.receiverValue, context)
+                SmartCastManager.checkAndRecordPossibleCast(
+                        dataFlowValue, smartCastDiagnostic.smartCastType, argumentExpression, context, call,
+                        recordExpressionType = true)
+            }
+            is ReceiverExpressionKotlinCallArgument -> {
+                trace.markAsReported()
+                val receiverValue = expressionArgument.receiver.receiverValue
+                val dataFlowValue = DataFlowValueFactory.createDataFlowValue(receiverValue, context)
+                SmartCastManager.checkAndRecordPossibleCast(
+                        dataFlowValue, smartCastDiagnostic.smartCastType, (receiverValue as? ExpressionReceiver)?.expression, context, call,
+                        recordExpressionType = true)
+            }
+            else -> null
         }
-        else if(expressionArgument is ReceiverExpressionKotlinCallArgument) {
-            val receiverValue = expressionArgument.receiver.receiverValue
-            val dataFlowValue = DataFlowValueFactory.createDataFlowValue(receiverValue, context)
-            SmartCastManager.checkAndRecordPossibleCast(
-                    dataFlowValue, smartCastDiagnostic.smartCastType, (receiverValue as? ExpressionReceiver)?.expression, context, call,
-                    recordExpressionType = true)
+        val resolvedCall = smartCastDiagnostic.kotlinCall?.psiKotlinCall?.psiCall?.getResolvedCall(trace.bindingContext) as? NewResolvedCallImpl<*>
+        if (resolvedCall != null && smartCastResult != null) {
+            if (resolvedCall.extensionReceiver == expressionArgument.receiver.receiverValue) {
+                resolvedCall.updateExtensionReceiverWithSmartCastIfNeeded(smartCastResult.resultType)
+            }
+            if (resolvedCall.dispatchReceiver == expressionArgument.receiver.receiverValue) {
+                resolvedCall.setSmartCastDispatchReceiverType(smartCastResult.resultType)
+            }
         }
     }
 
     private fun reportUnstableSmartCast(unstableSmartCast: UnstableSmartCast) {
         // todo hack -- remove it after removing SmartCastManager
-        reportSmartCast(SmartCastDiagnostic(unstableSmartCast.expressionArgument, unstableSmartCast.targetType))
+        reportSmartCast(SmartCastDiagnostic(unstableSmartCast.argument, unstableSmartCast.targetType, null))
     }
 
     override fun constraintError(diagnostic: KotlinCallDiagnostic) {
@@ -151,10 +174,13 @@ class DiagnosticReporterByTrackingStrategy(
             NewConstraintError::class.java -> {
                 val constraintError = diagnostic as NewConstraintError
                 val position = constraintError.position.from
-                (position as? ArgumentConstraintPosition)?.let {
-                    val expression = it.argument.psiExpression ?: return
-                    if (reportConstantTypeMismatch(constraintError, expression)) return
-                    trace.report(Errors.TYPE_MISMATCH.on(expression, constraintError.upperType, constraintError.lowerType))
+                val argument = (position as? ArgumentConstraintPosition)?.argument
+                               ?: (position as? ReceiverConstraintPosition)?.argument
+                argument?.let {
+                    val expression = it.psiExpression ?: return
+                    val deparenthesized = KtPsiUtil.safeDeparenthesize(expression)
+                    if (reportConstantTypeMismatch(constraintError, deparenthesized)) return
+                    trace.report(Errors.TYPE_MISMATCH.on(deparenthesized, constraintError.upperType, constraintError.lowerType))
                 }
                 (position as? ExplicitTypeParameterConstraintPosition)?.let {
                     val typeArgumentReference = (it.typeArgument as SimpleTypeArgumentImpl).typeReference

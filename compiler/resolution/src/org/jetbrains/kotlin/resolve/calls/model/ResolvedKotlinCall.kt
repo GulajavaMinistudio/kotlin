@@ -16,52 +16,6 @@
 
 package org.jetbrains.kotlin.resolve.calls.model
 
-import org.jetbrains.kotlin.descriptors.CallableDescriptor
-import org.jetbrains.kotlin.descriptors.ValueParameterDescriptor
-import org.jetbrains.kotlin.resolve.calls.inference.returnTypeOrNothing
-import org.jetbrains.kotlin.resolve.calls.tasks.ExplicitReceiverKind
-import org.jetbrains.kotlin.resolve.calls.tower.ResolutionCandidateStatus
-import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValueWithSmartCastInfo
-import org.jetbrains.kotlin.types.UnwrappedType
-
-sealed class ResolvedKotlinCall {
-    class CompletedResolvedKotlinCall(
-            val completedCall: CompletedKotlinCall,
-            val allInnerCalls: Collection<CompletedKotlinCall>
-    ): ResolvedKotlinCall()
-
-    class OnlyResolvedKotlinCall(
-            val candidate: KotlinResolutionCandidate
-    ) : ResolvedKotlinCall() {
-        val currentReturnType: UnwrappedType = candidate.lastCall.descriptorWithFreshTypes.returnTypeOrNothing
-    }
-}
-
-sealed class CompletedKotlinCall {
-    abstract val resolutionStatus: ResolutionCandidateStatus
-
-    class Simple(
-            val kotlinCall: KotlinCall,
-            val candidateDescriptor: CallableDescriptor,
-            val resultingDescriptor: CallableDescriptor,
-            override val resolutionStatus: ResolutionCandidateStatus,
-            val explicitReceiverKind: ExplicitReceiverKind,
-            val dispatchReceiver: ReceiverValueWithSmartCastInfo?,
-            val extensionReceiver: ReceiverValueWithSmartCastInfo?,
-            val typeArguments: List<UnwrappedType>,
-            val argumentMappingByOriginal: Map<ValueParameterDescriptor, ResolvedCallArgument>
-    ): CompletedKotlinCall()
-
-    class VariableAsFunction(
-            val kotlinCall: KotlinCall,
-            val variableCall: Simple,
-            val invokeCall: Simple
-    ): CompletedKotlinCall() {
-
-        override val resolutionStatus: ResolutionCandidateStatus =
-                ResolutionCandidateStatus(variableCall.resolutionStatus.diagnostics + invokeCall.resolutionStatus.diagnostics)
-    }
-}
 
 sealed class ResolvedCallArgument {
     abstract val arguments: List<KotlinCallArgument>

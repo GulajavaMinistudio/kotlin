@@ -68,14 +68,24 @@ public class KtPsiUtil {
 
     @NotNull
     public static KtExpression safeDeparenthesize(@NotNull KtExpression expression) {
-        KtExpression deparenthesized = deparenthesize(expression);
+        return safeDeparenthesize(expression, false);
+    }
+
+    @NotNull
+    public static KtExpression safeDeparenthesize(@NotNull KtExpression expression, boolean keepAnnotations) {
+        KtExpression deparenthesized = deparenthesize(expression, keepAnnotations);
         return deparenthesized != null ? deparenthesized : expression;
     }
 
     @Nullable
-    public static KtExpression deparenthesize(@Nullable KtExpression expression ) {
+    public static KtExpression deparenthesize(@Nullable KtExpression expression) {
+        return deparenthesize(expression, false);
+    }
+
+    @Nullable
+    public static KtExpression deparenthesize(@Nullable KtExpression expression, boolean keepAnnotations) {
         while (true) {
-            KtExpression baseExpression = deparenthesizeOnce(expression);
+            KtExpression baseExpression = deparenthesizeOnce(expression, keepAnnotations);
 
             if (baseExpression == expression) return baseExpression;
             expression = baseExpression;
@@ -86,7 +96,14 @@ public class KtPsiUtil {
     public static KtExpression deparenthesizeOnce(
             @Nullable KtExpression expression
     ) {
-        if (expression instanceof KtAnnotatedExpression) {
+        return deparenthesizeOnce(expression, false);
+    }
+
+    @Nullable
+    public static KtExpression deparenthesizeOnce(
+            @Nullable KtExpression expression, boolean keepAnnotations
+    ) {
+        if (expression instanceof KtAnnotatedExpression && !keepAnnotations) {
             return ((KtAnnotatedExpression) expression).getBaseExpression();
         }
         else if (expression instanceof KtLabeledExpression) {
@@ -513,6 +530,13 @@ public class KtPsiUtil {
             return false;
         }
 
+        // '(x operator y)' case
+        if (innerExpression instanceof KtBinaryExpression &&
+            innerOperation != KtTokens.ELVIS &&
+            isKeepBinaryExpressionParenthesized((KtBinaryExpression) innerExpression)) {
+            return true;
+        }
+
         int innerPriority = getPriority(innerExpression);
         int parentPriority = getPriority((KtExpression) parentElement);
 
@@ -532,6 +556,21 @@ public class KtPsiUtil {
         }
 
         return innerPriority < parentPriority;
+    }
+
+    private static boolean isKeepBinaryExpressionParenthesized(KtBinaryExpression expression) {
+        PsiElement expr = expression.getFirstChild();
+        while (expr != null) {
+            if (expr instanceof PsiWhiteSpace && expr.textContains('\n')) {
+                return true;
+            }
+            if (expr instanceof KtOperationReferenceExpression) {
+                break;
+            }
+            expr = expr.getNextSibling();
+        }
+        return (expression.getRight() instanceof KtBinaryExpression && isKeepBinaryExpressionParenthesized((KtBinaryExpression) expression.getRight())) ||
+               (expression.getLeft() instanceof KtBinaryExpression && isKeepBinaryExpressionParenthesized((KtBinaryExpression) expression.getLeft()));
     }
 
     public static boolean isAssignment(@NotNull PsiElement element) {

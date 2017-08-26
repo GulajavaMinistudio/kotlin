@@ -16,21 +16,22 @@
 
 package org.jetbrains.kotlin.resolve.calls.tower
 
+import com.intellij.psi.impl.source.tree.LeafPsiElement
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
+import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.resolve.BindingContext
+import org.jetbrains.kotlin.resolve.StatementFilter
 import org.jetbrains.kotlin.resolve.calls.callUtil.getCall
 import org.jetbrains.kotlin.resolve.calls.context.BasicCallResolutionContext
-import org.jetbrains.kotlin.resolve.calls.inference.model.ConstraintStorage
 import org.jetbrains.kotlin.resolve.calls.model.*
-import org.jetbrains.kotlin.resolve.calls.model.LambdaKotlinCallArgument
 import org.jetbrains.kotlin.resolve.calls.smartcasts.DataFlowInfo
 import org.jetbrains.kotlin.resolve.scopes.receivers.ExpressionReceiver
 import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValueWithSmartCastInfo
 import org.jetbrains.kotlin.resolve.scopes.receivers.TransientReceiver
+import org.jetbrains.kotlin.resolve.scopes.receivers.prepareReceiverRegardingCaptureTypes
 import org.jetbrains.kotlin.types.UnwrappedType
-import org.jetbrains.kotlin.types.checker.prepareArgumentTypeRegardingCaptureTypes
 import org.jetbrains.kotlin.types.expressions.KotlinTypeInfo
 
 class SimpleTypeArgumentImpl(
@@ -47,6 +48,8 @@ abstract class PSIKotlinCallArgument : KotlinCallArgument {
 
     override fun toString() = valueArgument.getArgumentExpression()?.text?.replace('\n', ' ') ?: valueArgument.toString()
 }
+
+abstract class SimplePSIKotlinCallArgument : PSIKotlinCallArgument(), SimpleKotlinCallArgument
 
 val KotlinCallArgument.psiCallArgument: PSIKotlinCallArgument get() {
     assert(this is PSIKotlinCallArgument) {
@@ -66,7 +69,7 @@ class ParseErrorKotlinCallArgument(
         override val valueArgument: ValueArgument,
         override val dataFlowInfoAfterThisArgument: DataFlowInfo,
         builtIns: KotlinBuiltIns
-): ExpressionKotlinCallArgument, PSIKotlinCallArgument() {
+): ExpressionKotlinCallArgument, SimplePSIKotlinCallArgument() {
     override val receiver = ReceiverValueWithSmartCastInfo(TransientReceiver(builtIns.nothingType), emptySet(), isStable = true)
 
     override val isSafeCall: Boolean get() = false
@@ -78,49 +81,74 @@ class ParseErrorKotlinCallArgument(
         get() = dataFlowInfoAfterThisArgument
 }
 
-class LambdaKotlinCallArgumentImpl(
+abstract class PSIFunctionKotlinCallArgument(
         val outerCallContext: BasicCallResolutionContext,
         override val valueArgument: ValueArgument,
         override val dataFlowInfoBeforeThisArgument: DataFlowInfo,
-        val ktLambdaExpression: KtLambdaExpression,
-        override val argumentName: Name?,
-        override val parametersTypes: Array<UnwrappedType?>?
+        override val argumentName: Name?
 ) : LambdaKotlinCallArgument, PSIKotlinCallArgument() {
-    override val dataFlowInfoAfterThisArgument: DataFlowInfo
+    override val dataFlowInfoAfterThisArgument: DataFlowInfo // todo drop this and use only lambdaInitialDataFlowInfo
         get() = dataFlowInfoBeforeThisArgument
+
+    abstract val ktFunction: KtFunction
+    abstract val expression: KtExpression
+    lateinit var lambdaInitialDataFlowInfo: DataFlowInfo
+}
+
+class LambdaKotlinCallArgumentImpl(
+        outerCallContext: BasicCallResolutionContext,
+        valueArgument: ValueArgument,
+        dataFlowInfoBeforeThisArgument: DataFlowInfo,
+        argumentName: Name?,
+        val ktLambdaExpression: KtLambdaExpression,
+        override val parametersTypes: Array<UnwrappedType?>?
+) : PSIFunctionKotlinCallArgument(outerCallContext, valueArgument, dataFlowInfoBeforeThisArgument, argumentName) {
+    override val ktFunction get() = ktLambdaExpression.functionLiteral
+    override val expression get() = ktLambdaExpression
 }
 
 class FunctionExpressionImpl(
-        val outerCallContext: BasicCallResolutionContext,
-        override val valueArgument: ValueArgument,
-        override val dataFlowInfoBeforeThisArgument: DataFlowInfo,
-        val ktFunction: KtNamedFunction,
-        override val argumentName: Name?,
+        outerCallContext: BasicCallResolutionContext,
+        valueArgument: ValueArgument,
+        dataFlowInfoBeforeThisArgument: DataFlowInfo,
+        argumentName: Name?,
+        override val ktFunction: KtNamedFunction,
         override val receiverType: UnwrappedType?,
         override val parametersTypes: Array<UnwrappedType?>,
         override val returnType: UnwrappedType?
-) : FunctionExpression, PSIKotlinCallArgument() {
-    override val dataFlowInfoAfterThisArgument: DataFlowInfo
-        get() = dataFlowInfoBeforeThisArgument
+) : FunctionExpression, PSIFunctionKotlinCallArgument(outerCallContext, valueArgument, dataFlowInfoBeforeThisArgument, argumentName) {
+    override val expression get() = ktFunction
 }
 
 class CallableReferenceKotlinCallArgumentImpl(
+        val scopeTowerForResolution: ImplicitScopeTower,
         override val valueArgument: ValueArgument,
         override val dataFlowInfoBeforeThisArgument: DataFlowInfo,
         override val dataFlowInfoAfterThisArgument: DataFlowInfo,
         val ktCallableReferenceExpression: KtCallableReferenceExpression,
         override val argumentName: Name?,
-        override val lhsType: UnwrappedType?,
-        override val constraintStorage: ConstraintStorage
+        override val lhsResult: LHSResult,
+        override val rhsName: Name
 ) : CallableReferenceKotlinCallArgument, PSIKotlinCallArgument()
+
+class CollectionLiteralKotlinCallArgumentImpl(
+        override val valueArgument: ValueArgument,
+        override val argumentName: Name?,
+        override val dataFlowInfoBeforeThisArgument: DataFlowInfo,
+        override val dataFlowInfoAfterThisArgument: DataFlowInfo,
+        val collectionLiteralExpression: KtCollectionLiteralExpression,
+        val outerCallContext: BasicCallResolutionContext
+) : CollectionLiteralKotlinCallArgument, PSIKotlinCallArgument() {
+    override val isSpread: Boolean get() = valueArgument.getSpreadElement() != null
+}
 
 class SubKotlinCallArgumentImpl(
         override val valueArgument: ValueArgument,
         override val dataFlowInfoBeforeThisArgument: DataFlowInfo,
         override val dataFlowInfoAfterThisArgument: DataFlowInfo,
         override val receiver: ReceiverValueWithSmartCastInfo,
-        override val resolvedCall: ResolvedKotlinCall.OnlyResolvedKotlinCall
-): PSIKotlinCallArgument(), SubKotlinCallArgument {
+        override val callResult: CallResolutionResult
+): SimplePSIKotlinCallArgument(), SubKotlinCallArgument {
     override val isSpread: Boolean get() = valueArgument.getSpreadElement() != null
     override val argumentName: Name? get() = valueArgument.getArgumentName()?.asName
     override val isSafeCall: Boolean get() = false
@@ -131,35 +159,79 @@ class ExpressionKotlinCallArgumentImpl(
         override val dataFlowInfoBeforeThisArgument: DataFlowInfo,
         override val dataFlowInfoAfterThisArgument: DataFlowInfo,
         override val receiver: ReceiverValueWithSmartCastInfo
-): PSIKotlinCallArgument(), ExpressionKotlinCallArgument {
+): SimplePSIKotlinCallArgument(), ExpressionKotlinCallArgument {
     override val isSpread: Boolean get() = valueArgument.getSpreadElement() != null
     override val argumentName: Name? get() = valueArgument.getArgumentName()?.asName
     override val isSafeCall: Boolean get() = false
 }
 
-internal fun createSimplePSICallArgument(
-        context: BasicCallResolutionContext,
-        valueArgument: ValueArgument,
-        typeInfo: KotlinTypeInfo
-): PSIKotlinCallArgument? {
-    val ktExpression = KtPsiUtil.getLastElementDeparenthesized(valueArgument.getArgumentExpression(), context.statementFilter) ?: return null
-    val onlyResolvedCall = ktExpression.getCall(context.trace.bindingContext)?.let {
-        context.trace.bindingContext.get(BindingContext.ONLY_RESOLVED_CALL, it)
-    }
-    val baseType = onlyResolvedCall?.currentReturnType ?: typeInfo.type?.unwrap() ?: return null
-    val preparedType = prepareArgumentTypeRegardingCaptureTypes(baseType) ?: baseType
+class FakeValueArgumentForLeftCallableReference(val ktExpression: KtCallableReferenceExpression): ValueArgument {
+    override fun getArgumentExpression() = ktExpression.receiverExpression
 
-    val receiverToCast = context.transformToReceiverWithSmartCastInfo(
-            ExpressionReceiver.create(ktExpression, baseType, context.trace.bindingContext)
+    override fun getArgumentName(): ValueArgumentName? = null
+    override fun isNamed(): Boolean = false
+    override fun asElement(): KtElement = getArgumentExpression() ?: ktExpression
+    override fun getSpreadElement(): LeafPsiElement? = null
+    override fun isExternal(): Boolean = false
+}
+
+class EmptyLabeledReturn(
+        val returnExpression: KtReturnExpression,
+        builtIns: KotlinBuiltIns
+) : ExpressionKotlinCallArgument {
+    override val isSpread: Boolean get() = false
+    override val argumentName: Name? get() = null
+    override val receiver = ReceiverValueWithSmartCastInfo(TransientReceiver(builtIns.unitType), emptySet(), true)
+    override val isSafeCall: Boolean get() = false
+}
+
+internal fun KotlinCallArgument.setResultDataFlowInfoIfRelevant(resultDataFlowInfo: DataFlowInfo) {
+    if (this is PSIFunctionKotlinCallArgument) {
+        lambdaInitialDataFlowInfo = resultDataFlowInfo
+    }
+}
+
+
+// context here is context for value argument analysis
+internal fun createSimplePSICallArgument(
+        contextForArgument: BasicCallResolutionContext,
+        valueArgument: ValueArgument,
+        typeInfoForArgument: KotlinTypeInfo
+) = createSimplePSICallArgument(contextForArgument.trace.bindingContext, contextForArgument.statementFilter,
+                                contextForArgument.scope.ownerDescriptor, valueArgument,
+                                contextForArgument.dataFlowInfo, typeInfoForArgument)
+
+internal fun createSimplePSICallArgument(
+        bindingContext: BindingContext,
+        statementFilter: StatementFilter,
+        ownerDescriptor: DeclarationDescriptor,
+        valueArgument: ValueArgument,
+        dataFlowInfoBeforeThisArgument: DataFlowInfo,
+        typeInfoForArgument: KotlinTypeInfo
+): SimplePSIKotlinCallArgument? {
+
+    val ktExpression = KtPsiUtil.getLastElementDeparenthesized(valueArgument.getArgumentExpression(), statementFilter) ?: return null
+    val onlyResolvedCall = ktExpression.getCall(bindingContext)?.let {
+        bindingContext.get(BindingContext.ONLY_RESOLVED_CALL, it)
+    }
+    // todo hack for if expression: sometimes we not write properly type information for branches
+    val baseType = typeInfoForArgument.type?.unwrap() ?:
+                   onlyResolvedCall?.resultCallAtom?.freshReturnType ?:
+                   return null
+
+    // we should use DFI after this argument, because there can be some useful smartcast. Popular case: if branches.
+    val receiverToCast = transformToReceiverWithSmartCastInfo(
+            ownerDescriptor, bindingContext,
+            typeInfoForArgument.dataFlowInfo, // dataFlowInfoBeforeThisArgument cannot be used here, because of if() { if (x != null) return; x }
+            ExpressionReceiver.create(ktExpression, baseType, bindingContext)
     ).let {
-        ReceiverValueWithSmartCastInfo(it.receiverValue.replaceType(preparedType), it.possibleTypes, it.isStable)
+        if (onlyResolvedCall == null) it.prepareReceiverRegardingCaptureTypes() else it
     }
 
     return if (onlyResolvedCall == null) {
-        ExpressionKotlinCallArgumentImpl(valueArgument, context.dataFlowInfo, typeInfo.dataFlowInfo, receiverToCast)
+        ExpressionKotlinCallArgumentImpl(valueArgument, dataFlowInfoBeforeThisArgument, typeInfoForArgument.dataFlowInfo, receiverToCast)
     }
     else {
-        SubKotlinCallArgumentImpl(valueArgument, context.dataFlowInfo, typeInfo.dataFlowInfo, receiverToCast, onlyResolvedCall)
+        SubKotlinCallArgumentImpl(valueArgument, dataFlowInfoBeforeThisArgument, typeInfoForArgument.dataFlowInfo, receiverToCast, onlyResolvedCall)
     }
-
 }

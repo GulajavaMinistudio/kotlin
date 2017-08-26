@@ -30,7 +30,7 @@ import org.jetbrains.kotlin.codegen.*;
 import org.jetbrains.kotlin.codegen.coroutines.CoroutineCodegenUtilKt;
 import org.jetbrains.kotlin.codegen.state.GenerationState;
 import org.jetbrains.kotlin.codegen.state.TypeMapperUtilsKt;
-import org.jetbrains.kotlin.codegen.when.SwitchCodegenUtil;
+import org.jetbrains.kotlin.codegen.when.SwitchCodegenProvider;
 import org.jetbrains.kotlin.codegen.when.WhenByEnumsMapping;
 import org.jetbrains.kotlin.coroutines.CoroutineUtilKt;
 import org.jetbrains.kotlin.descriptors.*;
@@ -38,6 +38,7 @@ import org.jetbrains.kotlin.descriptors.annotations.Annotations;
 import org.jetbrains.kotlin.descriptors.impl.LocalVariableDescriptor;
 import org.jetbrains.kotlin.fileClasses.FileClasses;
 import org.jetbrains.kotlin.fileClasses.JvmFileClassesProvider;
+import org.jetbrains.kotlin.load.java.JvmAbi;
 import org.jetbrains.kotlin.load.java.sam.SamConstructorDescriptor;
 import org.jetbrains.kotlin.load.kotlin.TypeMappingConfiguration;
 import org.jetbrains.kotlin.name.ClassId;
@@ -56,6 +57,7 @@ import org.jetbrains.kotlin.resolve.constants.EnumValue;
 import org.jetbrains.kotlin.resolve.constants.NullValue;
 import org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilsKt;
 import org.jetbrains.kotlin.types.KotlinType;
+import org.jetbrains.kotlin.types.checker.KotlinTypeChecker;
 import org.jetbrains.org.objectweb.asm.Type;
 
 import java.util.*;
@@ -82,7 +84,7 @@ class CodegenAnnotatingVisitor extends KtVisitorVoid {
     private final JvmRuntimeTypes runtimeTypes;
     private final JvmFileClassesProvider fileClassesProvider;
     private final TypeMappingConfiguration<Type> typeMappingConfiguration;
-    private final boolean shouldInlineConstVals;
+    private final SwitchCodegenProvider switchCodegenProvider;
 
     public CodegenAnnotatingVisitor(@NotNull GenerationState state) {
         this.bindingTrace = state.getBindingTrace();
@@ -91,7 +93,7 @@ class CodegenAnnotatingVisitor extends KtVisitorVoid {
         this.runtimeTypes = state.getJvmRuntimeTypes();
         this.fileClassesProvider = state.getFileClassesProvider();
         this.typeMappingConfiguration = state.getTypeMapper().getTypeMappingConfiguration();
-        this.shouldInlineConstVals = state.getShouldInlineConstVals();
+        this.switchCodegenProvider = new SwitchCodegenProvider(state);
     }
 
     @NotNull
@@ -439,9 +441,15 @@ class CodegenAnnotatingVisitor extends KtVisitorVoid {
             // The first "real" containing class (not a synthetic class for lambda) is the owner of the delegated property metadata
             if (!(descriptor instanceof SyntheticClassDescriptorForLambda)) {
                 ClassId classId = DescriptorUtilsKt.getClassId(descriptor);
-                return classId != null
-                       ? AsmUtil.asmTypeByClassId(classId)
-                       : CodegenBinding.getAsmType(bindingContext, descriptor);
+                if (classId == null) {
+                    return CodegenBinding.getAsmType(bindingContext, descriptor);
+                }
+
+                return AsmUtil.asmTypeByClassId(
+                        DescriptorUtils.isInterface(descriptor)
+                        ? classId.createNestedClassId(Name.identifier(JvmAbi.DEFAULT_IMPLS_CLASS_NAME))
+                        : classId
+                );
             }
         }
 
@@ -559,6 +567,9 @@ class CodegenAnnotatingVisitor extends KtVisitorVoid {
         if (valueArguments == null) return;
 
         for (ValueParameterDescriptor valueParameter : original.getValueParameters()) {
+            ValueParameterDescriptor adaptedParameter = descriptor.getValueParameters().get(valueParameter.getIndex());
+            if (KotlinTypeChecker.DEFAULT.equalTypes(adaptedParameter.getType(), valueParameter.getType())) continue;
+
             SamType samType = SamType.create(TypeMapperUtilsKt.removeExternalProjections(valueParameter.getType()));
             if (samType == null) continue;
 
@@ -678,7 +689,7 @@ class CodegenAnnotatingVisitor extends KtVisitorVoid {
 
         WhenByEnumsMapping mapping = new WhenByEnumsMapping(classDescriptor, currentClassName, fieldNumber);
 
-        for (ConstantValue<?> constant : SwitchCodegenUtil.getAllConstants(expression, bindingContext, shouldInlineConstVals)) {
+        for (ConstantValue<?> constant : switchCodegenProvider.getAllConstants(expression)) {
             if (constant instanceof NullValue) continue;
 
             assert constant instanceof EnumValue : "expression in when should be EnumValue";
@@ -692,10 +703,8 @@ class CodegenAnnotatingVisitor extends KtVisitorVoid {
 
     private boolean isWhenWithEnums(@NotNull KtWhenExpression expression) {
         return WhenChecker.isWhenByEnum(expression, bindingContext) &&
-               SwitchCodegenUtil.checkAllItemsAreConstantsSatisfying(
+               switchCodegenProvider.checkAllItemsAreConstantsSatisfying(
                        expression,
-                       bindingContext,
-                       shouldInlineConstVals,
                        constant -> constant instanceof EnumValue || constant instanceof NullValue
                );
     }

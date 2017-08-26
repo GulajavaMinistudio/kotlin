@@ -24,7 +24,7 @@ import org.jetbrains.kotlin.cli.common.messages.CompilerMessageLocation
 import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity
 import org.jetbrains.kotlin.cli.common.messages.MessageCollector
 import org.jetbrains.kotlin.incremental.testingUtils.*
-import org.junit.Assert.assertEquals
+import org.jetbrains.kotlin.incremental.utils.TestMessageCollector
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
@@ -134,7 +134,7 @@ class KotlinStandaloneIncrementalCompilationTest : TestWithWorkingDir() {
             }
         }
 
-        val messageCollector = ErrorMessageCollector()
+        val messageCollector = TestMessageCollector()
         makeIncrementally(cacheDir, sourceRoots, args, reporter = reporter, messageCollector = messageCollector)
         return CompilationResult(resultExitCode, compiledSources, messageCollector.errors)
     }
@@ -166,30 +166,13 @@ class KotlinStandaloneIncrementalCompilationTest : TestWithWorkingDir() {
         append('\n')
     }
 
-    private class ErrorMessageCollector : MessageCollector {
-        val errors = ArrayList<String>()
-
-        override fun report(severity: CompilerMessageSeverity, message: String, location: CompilerMessageLocation?) {
-            if (severity.isError) {
-                errors.add(message)
-            }
-        }
-
-        override fun clear() {
-            errors.clear()
-        }
-
-        override fun hasErrors(): Boolean =
-                errors.isNotEmpty()
-    }
-
     companion object {
         private val jpsResourcesPath = File("jps-plugin/testData/incremental")
         private val ignoredDirs = setOf(File(jpsResourcesPath, "cacheVersionChanged"),
                                         File(jpsResourcesPath, "changeIncrementalOption"),
                                         File(jpsResourcesPath, "custom"),
                                         File(jpsResourcesPath, "lookupTracker"))
-        private val buildLogFinder = BuildLogFinder(isExperimentalEnabled = true, isGradleEnabled = true)
+        private val buildLogFinder = BuildLogFinder(isGradleEnabled = true)
 
         @Suppress("unused")
         @Parameterized.Parameters(name = "{1}")

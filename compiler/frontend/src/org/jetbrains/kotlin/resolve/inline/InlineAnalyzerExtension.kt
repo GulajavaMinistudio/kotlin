@@ -154,9 +154,12 @@ class InlineAnalyzerExtension(
             }
 
     private fun checkHasInlinableAndNullability(functionDescriptor: FunctionDescriptor, function: KtFunction, trace: BindingTrace) {
-        for ((parameter, descriptor) in function.valueParameters.zip(functionDescriptor.valueParameters)) {
-            if (checkInlinableParameter(descriptor, parameter, functionDescriptor, trace)) return
+        var hasInlineArgs = false
+        function.valueParameters.zip(functionDescriptor.valueParameters).forEach {
+            (parameter, descriptor) ->
+            hasInlineArgs = hasInlineArgs or checkInlinableParameter(descriptor, parameter, functionDescriptor, trace)
         }
+        if (hasInlineArgs) return
 
         if (functionDescriptor.isInlineOnlyOrReifiable() || functionDescriptor.isHeader) return
 
@@ -166,12 +169,12 @@ class InlineAnalyzerExtension(
         trace.report(Errors.NOTHING_TO_INLINE.on(reportOn, functionDescriptor))
     }
 
-    fun checkInlinableParameter(
+    private fun checkInlinableParameter(
             parameter: ParameterDescriptor,
             expression: KtElement,
             functionDescriptor: CallableDescriptor,
             trace: BindingTrace?): Boolean {
-        if (InlineUtil.isInlineLambdaParameter(parameter)) {
+        if (InlineUtil.isInlineParameterExceptNullability(parameter)) {
             if (parameter.type.isMarkedNullable) {
                 trace?.report(Errors.NULLABLE_INLINE_PARAMETER.on(expression, expression, functionDescriptor))
             }

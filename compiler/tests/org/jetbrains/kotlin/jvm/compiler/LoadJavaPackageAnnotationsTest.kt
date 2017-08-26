@@ -31,6 +31,7 @@ import org.jetbrains.kotlin.test.KotlinTestUtils
 import org.jetbrains.kotlin.test.MockLibraryUtil
 import org.jetbrains.kotlin.test.TestJdkKind
 import org.jetbrains.kotlin.test.testFramework.KtUsefulTestCase
+import org.jetbrains.kotlin.utils.Jsr305State
 import java.io.File
 
 class LoadJavaPackageAnnotationsTest : KtUsefulTestCase() {
@@ -45,9 +46,9 @@ class LoadJavaPackageAnnotationsTest : KtUsefulTestCase() {
             if (useJavac) {
                 put(JVMConfigurationKeys.USE_JAVAC, true)
             }
-            languageVersionSettings = LanguageVersionSettingsImpl(LanguageVersion.LATEST_STABLE, ApiVersion.LATEST_STABLE).apply {
-                switchFlag(AnalysisFlags.loadJsr305Annotations, true)
-            }
+            languageVersionSettings = LanguageVersionSettingsImpl(
+                    LanguageVersion.LATEST_STABLE, ApiVersion.LATEST_STABLE, mapOf(AnalysisFlag.jsr305GlobalState to Jsr305State.ENABLE)
+            )
             configurator(this)
         }
         val environment =

@@ -6,7 +6,7 @@
   <version>@snapshot@</version>
   <vendor url="http://www.jetbrains.com">JetBrains s.r.o.</vendor>
 
-  <idea-version since-build="171.1" until-build="172.*"/>
+  <idea-version since-build="172.1" until-build="173.*"/>
 
   <depends>com.intellij.modules.java</depends>
 
@@ -146,6 +146,14 @@
                 text="Local scenario"/>
       </group>
 
+      <action id="HighlightingBenchmarkAction"
+              class="org.jetbrains.kotlin.idea.actions.internal.benchmark.HighlightingBenchmarkAction"
+              text="Benchmark highlighting"/>
+
+      <action id="CompletionBindingContextCachingToggleAction"
+              class="org.jetbrains.kotlin.idea.actions.internal.CompletionBindingContextCachingToggleAction"
+              text="Enable completion binding context caching"/>
+
       <action id="CheckComponentsUsageSearchAction" class="org.jetbrains.kotlin.idea.actions.internal.CheckComponentsUsageSearchAction"
               text="Check Component Functions Usage Search"/>
 
@@ -284,6 +292,12 @@
     <projectService serviceInterface="org.jetbrains.kotlin.idea.core.script.ScriptDependenciesManager"
                     serviceImplementation="org.jetbrains.kotlin.idea.core.script.ScriptDependenciesManager"/>
 
+    <projectService serviceInterface="org.jetbrains.kotlin.idea.core.script.ScriptDependenciesCache"
+                    serviceImplementation="org.jetbrains.kotlin.idea.core.script.ScriptDependenciesCache"/>
+
+    <projectService serviceInterface="org.jetbrains.kotlin.idea.core.script.ScriptDependenciesUpdater"
+                    serviceImplementation="org.jetbrains.kotlin.idea.core.script.ScriptDependenciesUpdater"/>
+
     <projectService serviceInterface="org.jetbrains.kotlin.script.ScriptReportSink"
                     serviceImplementation="org.jetbrains.kotlin.idea.core.script.IdeScriptReportSink"/>
 
@@ -329,9 +343,6 @@
 
     <projectService serviceInterface="org.jetbrains.kotlin.console.KotlinConsoleKeeper"
                     serviceImplementation="org.jetbrains.kotlin.console.KotlinConsoleKeeper"/>
-
-    <projectService serviceInterface="org.jetbrains.kotlin.analyzer.LanguageSettingsProvider"
-                    serviceImplementation="org.jetbrains.kotlin.idea.compiler.LanguageVersionSettingsProviderImpl"/>
 
     <projectService serviceInterface="org.jetbrains.kotlin.asJava.classes.LightClassInheritanceHelper"
                     serviceImplementation="org.jetbrains.kotlin.idea.caches.resolve.lightClasses.IdeLightClassInheritanceHelper"/>
@@ -484,6 +495,7 @@
     <completion.confidence language="kotlin"
                            implementationClass="org.jetbrains.kotlin.idea.completion.confidence.UnfocusedPossibleFunctionParameter"/>
     <completion.confidence language="kotlin" implementationClass="com.intellij.codeInsight.completion.AlwaysFocusLookup" order="last"/>
+    <completion.confidence language="kotlin" implementationClass="org.jetbrains.kotlin.idea.completion.confidence.EnableAutopopupInStringTemplate"/>
     <completion.confidence language="kotlin" implementationClass="com.intellij.codeInsight.completion.SkipAutopopupInStrings"/>
 
     <lookup.charFilter implementation="org.jetbrains.kotlin.idea.completion.KotlinCompletionCharFilter"/>
@@ -790,6 +802,7 @@
 
     <joinLinesHandler implementation="org.jetbrains.kotlin.idea.joinLines.JoinDeclarationAndAssignmentHandler"/>
     <joinLinesHandler implementation="org.jetbrains.kotlin.idea.joinLines.JoinBlockIntoSingleStatementHandler"/>
+    <joinLinesHandler implementation="org.jetbrains.kotlin.idea.joinLines.JoinStatementsAddSemicolonHandler"/>
 
     <targetElementEvaluator
         language="kotlin"
@@ -1143,6 +1156,11 @@
     </intentionAction>
 
     <intentionAction>
+      <className>org.jetbrains.kotlin.idea.intentions.SwapStringEqualsIgnoreCaseIntention</className>
+      <category>Kotlin</category>
+    </intentionAction>
+
+    <intentionAction>
       <className>org.jetbrains.kotlin.idea.intentions.SplitIfIntention</className>
       <category>Kotlin</category>
     </intentionAction>
@@ -1399,11 +1417,6 @@
 
     <intentionAction>
       <className>org.jetbrains.kotlin.idea.intentions.IntroduceVariableIntention</className>
-      <category>Kotlin</category>
-    </intentionAction>
-
-    <intentionAction>
-      <className>org.jetbrains.kotlin.idea.intentions.RemoveAtFromAnnotationArgumentIntention</className>
       <category>Kotlin</category>
     </intentionAction>
 
@@ -2028,15 +2041,6 @@
                      language="kotlin"
     />
 
-    <localInspection implementationClass="org.jetbrains.kotlin.idea.intentions.RemoveAtFromAnnotationArgumentInspection"
-                     displayName="Unnecessary @"
-                     groupPath="Kotlin"
-                     groupName="Probable bugs"
-                     enabledByDefault="true"
-                     level="WARNING"
-                     language="kotlin"
-    />
-
     <localInspection implementationClass="org.jetbrains.kotlin.idea.intentions.ConvertLambdaToReferenceInspection"
                      displayName="Can be replaced with function reference"
                      groupPath="Kotlin"
@@ -2309,7 +2313,7 @@
     />
 
     <localInspection implementationClass="org.jetbrains.kotlin.idea.inspections.NullableBooleanElvisInspection"
-                     displayName="Equality check can be used instead of elvis"
+                     displayName="Equality check can be used instead of elvis for nullable boolean check"
                      groupPath="Kotlin"
                      groupName="Style issues"
                      enabledByDefault="true"
@@ -2434,6 +2438,123 @@
                      language="kotlin"
     />
 
+    <localInspection implementationClass="org.jetbrains.kotlin.idea.inspections.KotlinDoubleNegationInspection"
+                     displayName="Redundant double negation"
+                     groupPath="Kotlin"
+                     groupName="Redundant constructs"
+                     enabledByDefault="true"
+                     level="WEAK WARNING"
+                     language="kotlin"
+    />
+
+    <localInspection implementationClass="org.jetbrains.kotlin.idea.inspections.WhenWithOnlyElseInspection"
+                     displayName="'when' has only 'else' branch and can be simplified"
+                     groupPath="Kotlin"
+                     groupName="Redundant constructs"
+                     enabledByDefault="true"
+                     level="WEAK WARNING"
+                     language="kotlin"
+    />
+
+    <localInspection implementationClass="org.jetbrains.kotlin.idea.inspections.RedundantLambdaArrowInspection"
+                     displayName="Redundant lambda arrow"
+                     groupPath="Kotlin"
+                     groupName="Redundant constructs"
+                     enabledByDefault="true"
+                     level="WEAK WARNING"
+                     language="kotlin"
+    />
+
+    <localInspection implementationClass="org.jetbrains.kotlin.idea.inspections.ClassNameInspection"
+                     language="kotlin"
+                     groupPath="Kotlin"
+                     groupName="Naming conventions"
+                     enabledByDefault="true"
+                     displayName="Class naming convention"
+                     level="WEAK WARNING"/>
+
+    <localInspection implementationClass="org.jetbrains.kotlin.idea.inspections.EnumEntryNameInspection"
+                     language="kotlin"
+                     groupPath="Kotlin"
+                     groupName="Naming conventions"
+                     enabledByDefault="true"
+                     displayName="Enum entry naming convention"
+                     level="WEAK WARNING"/>
+
+    <localInspection implementationClass="org.jetbrains.kotlin.idea.inspections.FunctionNameInspection"
+                     language="kotlin"
+                     groupPath="Kotlin"
+                     groupName="Naming conventions"
+                     enabledByDefault="true"
+                     displayName="Function naming convention"
+                     level="WEAK WARNING"/>
+
+    <localInspection implementationClass="org.jetbrains.kotlin.idea.inspections.PropertyNameInspection"
+                     language="kotlin"
+                     groupPath="Kotlin"
+                     groupName="Naming conventions"
+                     enabledByDefault="true"
+                     displayName="Property naming convention"
+                     level="WEAK WARNING"/>
+
+    <localInspection implementationClass="org.jetbrains.kotlin.idea.inspections.ObjectPropertyNameInspection"
+                     language="kotlin"
+                     groupPath="Kotlin"
+                     groupName="Naming conventions"
+                     enabledByDefault="true"
+                     displayName="Object property naming convention"
+                     level="WEAK WARNING"/>
+
+    <localInspection implementationClass="org.jetbrains.kotlin.idea.inspections.PrivatePropertyNameInspection"
+                     language="kotlin"
+                     groupPath="Kotlin"
+                     groupName="Naming conventions"
+                     enabledByDefault="true"
+                     displayName="Private property naming convention"
+                     level="WEAK WARNING"/>
+
+    <localInspection implementationClass="org.jetbrains.kotlin.idea.inspections.ConstPropertyNameInspection"
+                     language="kotlin"
+                     groupPath="Kotlin"
+                     groupName="Naming conventions"
+                     enabledByDefault="true"
+                     displayName="Const property naming convention"
+                     level="WEAK WARNING"/>
+
+    <localInspection implementationClass="org.jetbrains.kotlin.idea.inspections.LocalVariableNameInspection"
+                     language="kotlin"
+                     groupPath="Kotlin"
+                     groupName="Naming conventions"
+                     enabledByDefault="true"
+                     displayName="Local variable naming convention"
+                     level="WEAK WARNING"/>
+
+    <localInspection implementationClass="org.jetbrains.kotlin.idea.inspections.PackageNameInspection"
+                     language="kotlin"
+                     groupPath="Kotlin"
+                     groupName="Naming conventions"
+                     enabledByDefault="true"
+                     displayName="Package naming convention"
+                     level="WEAK WARNING"/>
+
+    <localInspection implementationClass="org.jetbrains.kotlin.idea.inspections.KotlinRedundantOverrideInspection"
+                     displayName="Redundant override"
+                     groupPath="Kotlin"
+                     groupName="Redundant constructs"
+                     enabledByDefault="true"
+                     level="WEAK WARNING"
+                     language="kotlin"
+    />
+
+    <localInspection implementationClass="org.jetbrains.kotlin.idea.inspections.SuspiciousEqualsCombination"
+                     displayName="Suspicious combination of == and ==="
+                     groupPath="Kotlin"
+                     groupName="Probable bugs"
+                     enabledByDefault="true"
+                     level="WEAK WARNING"
+                     language="kotlin"
+    />
+
     <referenceImporter implementation="org.jetbrains.kotlin.idea.quickfix.KotlinReferenceImporter"/>
 
     <fileType.fileViewProviderFactory filetype="KJSM" implementationClass="com.intellij.psi.ClassFileViewProviderFactory"/>
@@ -2455,7 +2576,14 @@
     <indexedRootsProvider implementation="org.jetbrains.kotlin.idea.core.script.dependencies.KotlinScriptDependenciesIndexableSetContributor"/>
     <psi.clsCustomNavigationPolicy implementation="org.jetbrains.kotlin.idea.core.script.dependencies.ScriptDependencySourceNavigationPolicyForJavaClasses"/>
     <resolveScopeProvider implementation="org.jetbrains.kotlin.idea.core.script.dependencies.KotlinScriptResolveScopeProvider"/>
+    <projectOpenProcessor implementation="org.jetbrains.kotlin.gradle.GradleKotlinDSLProjectOpenProcessor"/>
+    <projectImportProvider implementation="org.jetbrains.kotlin.gradle.GradleKotlinDSLProjectImportProvider"/>
 
+    <codeInsight.intention.jvmCommonIntentionActionsFactory language="kotlin" implementationClass="org.jetbrains.kotlin.idea.intentions.KotlinCommonIntentionActionsFactory"/>
+  </extensions>
+
+  <extensions defaultExtensionNs="org.jetbrains.uast">
+    <uastLanguagePlugin implementation="org.jetbrains.uast.kotlin.KotlinUastLanguagePlugin"/>
   </extensions>
 
   <xi:include href="tipsAndTricks.xml" xpointer="xpointer(/idea-plugin/*)"/>

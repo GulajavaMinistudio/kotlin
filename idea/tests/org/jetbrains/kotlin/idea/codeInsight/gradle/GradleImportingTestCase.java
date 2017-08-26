@@ -120,7 +120,7 @@ public abstract class GradleImportingTestCase extends ExternalSystemImportingTes
         }
       }.execute();
       Messages.setTestDialog(TestDialog.DEFAULT);
-      FileUtil.delete(BuildManager.getInstance().getBuildSystemDirectory());
+      FileUtil.delete(BuildManager.getInstance().getBuildSystemDirectory().toFile());
     }
     finally {
       super.tearDown();
@@ -152,6 +152,11 @@ public abstract class GradleImportingTestCase extends ExternalSystemImportingTes
   @Override
   protected String getExternalSystemConfigFileName() {
     return "build.gradle";
+  }
+
+  protected void importProjectUsingSingeModulePerGradleProject() {
+    getCurrentExternalProjectSettings().setResolveModulePerSourceSet(false);
+    importProject();
   }
 
   @Override
