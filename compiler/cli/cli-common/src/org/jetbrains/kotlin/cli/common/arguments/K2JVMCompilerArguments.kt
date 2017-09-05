@@ -93,8 +93,11 @@ class K2JVMCompilerArguments : CommonCompilerArguments() {
     )
     var additionalJavaModules: Array<String>? by FreezableVar(null)
 
-    @Argument(value = "-Xno-call-assertions", description = "Don't generate not-null assertion after each invocation of method returning not-null")
+    @Argument(value = "-Xno-call-assertions", description = "Don't generate not-null assertions for arguments of platform types")
     var noCallAssertions: Boolean by FreezableVar(false)
+
+    @Argument(value = "-Xno-receiver-assertions", description = "Don't generate not-null assertion for extension receiver arguments of platform types")
+    var noReceiverAssertions: Boolean by FreezableVar(false)
 
     @Argument(value = "-Xno-param-assertions", description = "Don't generate not-null assertions on parameters of methods accessible from Java")
     var noParamAssertions: Boolean by FreezableVar(false)
@@ -147,6 +150,9 @@ class K2JVMCompilerArguments : CommonCompilerArguments() {
     // Javac options
     @Argument(value = "-Xuse-javac", description = "Use javac for Java source and class files analysis")
     var useJavac: Boolean by FreezableVar(false)
+
+    @Argument(value = "-Xcompile-java", description = "Reuse javac analysis and compile Java source files")
+    var compileJava by FreezableVar(false)
 
     @Argument(
             value = "-Xjavac-arguments",

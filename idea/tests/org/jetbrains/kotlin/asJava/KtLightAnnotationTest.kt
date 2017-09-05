@@ -16,21 +16,17 @@
 
 package org.jetbrains.kotlin.asJava
 
-import com.intellij.psi.PsiAnnotation
-import com.intellij.psi.PsiArrayInitializerMemberValue
-import com.intellij.psi.PsiElement
-import com.intellij.psi.PsiModifierListOwner
+import com.intellij.psi.*
 import com.intellij.testFramework.LightProjectDescriptor
 import junit.framework.TestCase
 import org.jetbrains.kotlin.idea.test.KotlinLightCodeInsightFixtureTestCase
 import org.jetbrains.kotlin.idea.test.KotlinWithJdkAndRuntimeLightProjectDescriptor
-import org.jetbrains.uast.java.annotations
 
 class KtLightAnnotationTest : KotlinLightCodeInsightFixtureTestCase() {
 
     override fun getProjectDescriptor(): LightProjectDescriptor = KotlinWithJdkAndRuntimeLightProjectDescriptor.INSTANCE
 
-    fun testBooleanAnnotation() {
+    fun testBooleanAnnotationDefaultValue() {
         myFixture.addClass("""
             import java.lang.annotation.ElementType;
             import java.lang.annotation.Target;
@@ -52,7 +48,32 @@ class KtLightAnnotationTest : KotlinLightCodeInsightFixtureTestCase() {
         val annotations = myFixture.findClass("AnnotatedClass").fields.single()
                 .expectAnnotations(2).single { it.qualifiedName == "Autowired" }
         val annotationAttributeVal = annotations.findAttributeValue("required") as PsiElement
-        assertTextAndRange("true", annotationAttributeVal)
+        assertTextRangeAndValue("true", true, annotationAttributeVal)
+    }
+
+    fun testStringAnnotationWithUnnamedParameter() {
+        myFixture.addClass("""
+            import java.lang.annotation.ElementType;
+            import java.lang.annotation.Target;
+
+            @Target(ElementType.PARAMETER)
+            public @interface Qualifier {
+                String value();
+            }
+        """.trimIndent())
+
+        myFixture.configureByText("AnnotatedClass.kt", """
+            class AnnotatedClass {
+                    fun bar(@Qualifier("foo") param: String){}
+            }
+        """.trimIndent())
+        myFixture.testHighlighting("Qualifier.java", "AnnotatedClass.kt")
+
+        val annotation = myFixture.findClass("AnnotatedClass").methods.first { it.name == "bar" }.parameterList.parameters.single()
+                .expectAnnotations(2).single { it.qualifiedName == "Qualifier" }
+        val annotationAttributeVal = annotation.findAttributeValue("value") as PsiElement
+        TestCase.assertTrue(annotationAttributeVal.isPhysical)
+        assertTextRangeAndValue("\"foo\"", "foo", annotationAttributeVal)
     }
 
     fun testAnnotationsInAnnotationsDeclarations() {
@@ -219,13 +240,7 @@ class KtLightAnnotationTest : KotlinLightCodeInsightFixtureTestCase() {
             class MyAnnotated {}
         """.trimIndent())
 
-        val annotations = listOf(myFixture.findClass("MyAnnotated")).let {
-            assertEquals(1, it.size)
-            it.first().annotations.apply {
-                assertEquals(1, it.size)
-            }
-        }
-
+        val annotations = myFixture.findClass("MyAnnotated").expectAnnotations(1)
         annotations[0].let { annotation ->
             val annotationAttributeVal = annotation.findAttributeValue("value") as PsiElement
             assertTextAndRange("@Outer(Inner())", annotationAttributeVal)
@@ -347,8 +362,16 @@ class KtLightAnnotationTest : KotlinLightCodeInsightFixtureTestCase() {
         TestCase.assertEquals(expected, psiElement.textRange.substring(psiElement.containingFile.text))
     }
 
+    private fun assertTextRangeAndValue(expected: String, value: Any?, psiElement: PsiElement) {
+        assertTextAndRange(expected, psiElement)
+        val result = JavaPsiFacade.getInstance(project).constantEvaluationHelper.computeConstantExpression(psiElement)
+        TestCase.assertEquals(value, result)
+        val smartPointer = SmartPointerManager.getInstance(psiElement.project).createSmartPsiElementPointer(psiElement)
+        assertTextAndRange(expected, smartPointer.element!!)
+    }
+
     private fun PsiModifierListOwner.expectAnnotations(number: Int): Array<PsiAnnotation> =
-            this.annotations.apply {
+            this.modifierList!!.annotations.apply {
                 TestCase.assertEquals("expected one annotation, found ${this.joinToString(", ") { it.qualifiedName ?: "unknown" }}",
                                       number, size)
             }

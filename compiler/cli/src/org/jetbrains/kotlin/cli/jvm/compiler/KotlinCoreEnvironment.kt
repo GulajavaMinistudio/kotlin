@@ -89,6 +89,7 @@ import org.jetbrains.kotlin.extensions.DeclarationAttributeAltererExtension
 import org.jetbrains.kotlin.extensions.PreprocessedVirtualFileFactoryExtension
 import org.jetbrains.kotlin.extensions.StorageComponentContainerContributor
 import org.jetbrains.kotlin.idea.KotlinFileType
+import org.jetbrains.kotlin.js.translate.extensions.JsSyntheticTranslateExtension
 import org.jetbrains.kotlin.load.kotlin.KotlinBinaryClassCache
 import org.jetbrains.kotlin.load.kotlin.MetadataFinderFactory
 import org.jetbrains.kotlin.load.kotlin.ModuleVisibilityManager
@@ -165,6 +166,7 @@ class KotlinCoreEnvironment private constructor(
         StorageComponentContainerContributor.registerExtensionPoint(project)
         DeclarationAttributeAltererExtension.registerExtensionPoint(project)
         PreprocessedVirtualFileFactoryExtension.registerExtensionPoint(project)
+        JsSyntheticTranslateExtension.registerExtensionPoint(project)
 
         for (registrar in configuration.getList(ComponentRegistrar.PLUGIN_COMPONENT_REGISTRARS)) {
             registrar.registerProjectComponents(project, configuration)
@@ -205,7 +207,8 @@ class KotlinCoreEnvironment private constructor(
                 messageCollector,
                 configuration.getList(JVMConfigurationKeys.ADDITIONAL_JAVA_MODULES),
                 this::contentRootToVirtualFile,
-                javaModuleFinder
+                javaModuleFinder,
+                !configuration.getBoolean(CLIConfigurationKeys.ALLOW_KOTLIN_PACKAGE)
         )
 
         val (initialRoots, javaModules) =
@@ -275,9 +278,11 @@ class KotlinCoreEnvironment private constructor(
     fun registerJavac(
             javaFiles: List<File> = allJavaFiles,
             kotlinFiles: List<KtFile> = sourceFiles,
-            arguments: Array<String>? = null
+            arguments: Array<String>? = null,
+            bootClasspath: List<File>? = null,
+            sourcePath: List<File>? = null
     ): Boolean {
-        return JavacWrapperRegistrar.registerJavac(projectEnvironment.project, configuration, javaFiles, kotlinFiles, arguments)
+        return JavacWrapperRegistrar.registerJavac(projectEnvironment.project, configuration, javaFiles, kotlinFiles, arguments, bootClasspath, sourcePath, LightClassGenerationSupport.getInstance(project))
     }
 
     private val applicationEnvironment: CoreApplicationEnvironment
@@ -355,7 +360,7 @@ class KotlinCoreEnvironment private constructor(
     }
 
     companion object {
-        private val ideaCompatibleBuildNumber = "171.9999"
+        private val ideaCompatibleBuildNumber = "172.9999"
 
         init {
             setCompatibleBuild()
