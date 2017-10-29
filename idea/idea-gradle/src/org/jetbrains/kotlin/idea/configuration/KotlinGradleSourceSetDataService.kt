@@ -20,20 +20,22 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.externalSystem.model.DataNode
 import com.intellij.openapi.externalSystem.model.ProjectKeys
 import com.intellij.openapi.externalSystem.model.project.LibraryData
-import com.intellij.openapi.externalSystem.model.project.LibraryDependencyData
 import com.intellij.openapi.externalSystem.model.project.ModuleData
 import com.intellij.openapi.externalSystem.model.project.ProjectData
 import com.intellij.openapi.externalSystem.service.project.IdeModifiableModelsProvider
 import com.intellij.openapi.externalSystem.service.project.manage.AbstractProjectDataService
 import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil
 import com.intellij.openapi.module.Module
+import com.intellij.openapi.module.isQualifiedModuleNamesEnabled
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.OrderRootType
 import com.intellij.openapi.roots.impl.libraries.LibraryEx
 import com.intellij.openapi.roots.impl.libraries.LibraryImpl
 import com.intellij.openapi.roots.libraries.PersistentLibraryKind
 import com.intellij.util.PathUtil
+import org.jetbrains.kotlin.cli.common.arguments.K2JSCompilerArguments
 import org.jetbrains.kotlin.cli.common.arguments.K2JVMCompilerArguments
+import org.jetbrains.kotlin.cli.common.arguments.parseCommandLineArguments
 import org.jetbrains.kotlin.config.CoroutineSupport
 import org.jetbrains.kotlin.config.JvmTarget
 import org.jetbrains.kotlin.config.LanguageFeature
@@ -192,9 +194,9 @@ private fun configureFacetByGradleModule(
     val kotlinFacet = ideModule.getOrCreateFacet(modelsProvider, false)
     kotlinFacet.configureFacet(compilerVersion, coroutinesProperty, platformKind, modelsProvider)
 
-    val sourceSetName = sourceSetNode?.data?.id?.let { it.substring(it.lastIndexOf(':') + 1) } ?: "main"
+    val sourceSetName = sourceSetNode?.data?.id?.let { it.substring(it.lastIndexOf(':') + 1) }
 
-    val argsInfo = moduleNode.compilerArgumentsBySourceSet?.get(sourceSetName)
+    val argsInfo = moduleNode.compilerArgumentsBySourceSet?.get(sourceSetName ?: "main")
     if (argsInfo != null) {
         val currentCompilerArguments = argsInfo.currentArguments
         val defaultCompilerArguments = argsInfo.defaultArguments
@@ -205,7 +207,25 @@ private fun configureFacetByGradleModule(
         adjustClasspath(kotlinFacet, dependencyClasspath)
     }
 
+    with(kotlinFacet.configuration.settings) {
+        implementedModuleName = getImplementedModuleName(moduleNode, sourceSetName)
+        testOutputPath = getExplicitTestOutputPath(moduleNode, platformKind)
+    }
+
     return kotlinFacet
+}
+
+private fun getExplicitTestOutputPath(moduleNode: DataNode<ModuleData>, platformKind: TargetPlatformKind<*>?): String? {
+    if (platformKind !is TargetPlatformKind.JavaScript) return null
+    val k2jsArgumentList = moduleNode.compilerArgumentsBySourceSet?.get("test")?.currentArguments ?: return null
+    return K2JSCompilerArguments().apply { parseCommandLineArguments(k2jsArgumentList, this) }.outputFile
+}
+
+private fun getImplementedModuleName(moduleNode: DataNode<ModuleData>, sourceSetName: String?): String? {
+    val baseModuleName = moduleNode.implementedModule?.data?.internalName
+    if (baseModuleName == null || sourceSetName == null) return baseModuleName
+    val delimiter = if(isQualifiedModuleNamesEnabled()) "." else "_"
+    return "$baseModuleName$delimiter$sourceSetName"
 }
 
 private fun adjustClasspath(kotlinFacet: KotlinFacet, dependencyClasspath: List<String>) {

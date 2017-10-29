@@ -23,18 +23,18 @@ import org.junit.Test
 
 class QuickFixMultiModuleTest : AbstractQuickFixMultiModuleTest() {
     private fun doMultiPlatformTest(
-            headerName: String = "header",
+            expectName: String = "header", // todo: change dir name
             vararg impls: Pair<String, TargetPlatformKind<*>> = arrayOf("jvm" to TargetPlatformKind.Jvm[JvmTarget.JVM_1_6]),
             withTests: Boolean = false
     ) {
-        val header = module(headerName, hasTestRoot = withTests)
-        header.createFacet(TargetPlatformKind.Common)
+        val commonModule = module(expectName, hasTestRoot = withTests)
+        commonModule.createFacet(TargetPlatformKind.Common, false)
 
         impls.forEach { (implName, implKind) ->
             val implModule = module(implName, hasTestRoot = withTests)
-            implModule.createFacet(implKind)
+            implModule.createFacet(implKind, implementedModuleName = expectName)
             implModule.enableMultiPlatform()
-            implModule.addDependency(header)
+            implModule.addDependency(commonModule)
         }
 
         doQuickFixTest()
@@ -50,7 +50,47 @@ class QuickFixMultiModuleTest : AbstractQuickFixMultiModuleTest() {
     }
 
     @Test
+    fun testAnnotation() {
+        doMultiPlatformTest()
+    }
+
+    @Test
     fun testClass() {
+        doMultiPlatformTest()
+    }
+
+    @Test
+    fun testClassFunction() {
+        doMultiPlatformTest()
+    }
+
+    @Test
+    fun testClassOverloadedFunction() {
+        doMultiPlatformTest()
+    }
+
+    @Test
+    fun testClassSomeProperties() {
+        doMultiPlatformTest()
+    }
+
+    @Test
+    fun testDeprecatedHeader() {
+        doMultiPlatformTest()
+    }
+
+    @Test
+    fun testDeprecatedHeaderImpl() {
+        doMultiPlatformTest()
+    }
+
+    @Test
+    fun testDeprecatedImpl() {
+        doMultiPlatformTest()
+    }
+
+    @Test
+    fun testDeprecatedImplHeader() {
         doMultiPlatformTest()
     }
 
@@ -70,7 +110,22 @@ class QuickFixMultiModuleTest : AbstractQuickFixMultiModuleTest() {
     }
 
     @Test
+    fun testNested() {
+        doMultiPlatformTest()
+    }
+
+    @Test
     fun testObject() {
+        doMultiPlatformTest()
+    }
+
+    @Test
+    fun testOrderHeader() {
+        doMultiPlatformTest()
+    }
+
+    @Test
+    fun testOrderImpl() {
         doMultiPlatformTest()
     }
 
@@ -90,7 +145,12 @@ class QuickFixMultiModuleTest : AbstractQuickFixMultiModuleTest() {
     }
 
     @Test
-    fun testNested() {
+    fun testPrimaryConstructor() {
+        doMultiPlatformTest()
+    }
+
+    @Test
+    fun testPrimaryConstructorAbsence() {
         doMultiPlatformTest()
     }
 
@@ -105,8 +165,13 @@ class QuickFixMultiModuleTest : AbstractQuickFixMultiModuleTest() {
     }
 
     @Test
+    fun testSecondaryConstructorAbsence() {
+        doMultiPlatformTest()
+    }
+
+    @Test
     fun testWithTest() {
-        doMultiPlatformTest(headerName = "common", withTests = true)
+        doMultiPlatformTest(expectName = "common", withTests = true)
     }
 
     @Test
@@ -153,4 +218,16 @@ class QuickFixMultiModuleTest : AbstractQuickFixMultiModuleTest() {
 
     @Test
     fun testFunctionTypeReceiverToParameterByImpl() = doTestHeaderWithJvmAndJs()
+
+    @Test
+    fun testImplementMembersInImplClassNonImplInheritor() = doMultiPlatformTest()
+
+    @Test
+    fun testAddActualToClass() = doMultiPlatformTest()
+
+    @Test
+    fun testAddActualToClassMember() = doMultiPlatformTest()
+
+    @Test
+    fun testAddActualToTopLevelMember() = doMultiPlatformTest()
 }

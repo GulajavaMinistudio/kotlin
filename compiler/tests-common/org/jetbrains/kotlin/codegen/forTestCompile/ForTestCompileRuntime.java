@@ -45,6 +45,10 @@ public class ForTestCompileRuntime {
     public static File kotlinTestJarForTests() {
         return assertExists(new File("dist/kotlinc/lib/kotlin-test.jar"));
     }
+    @NotNull
+    public static File kotlinTestJunitJarForTests() {
+        return assertExists(new File("dist/kotlinc/lib/kotlin-test-junit.jar"));
+    }
 
     @NotNull
     public static File reflectJarForTests() {
@@ -71,11 +75,22 @@ public class ForTestCompileRuntime {
         return assertExists(new File("dist/kotlinc/lib/kotlin-stdlib-js.jar"));
     }
 
+    @NotNull
+    public static File jvmAnnotationsForTests() {
+        return assertExists(new File("dist/kotlinc/lib/kotlin-annotations-jvm.jar"));
+    }
+
+    @NotNull
+    public static File androidAnnotationsForTests() {
+        return assertExists(new File("dist/kotlinc/lib/kotlin-annotations-android.jar"));
+    }
+
     // TODO: Do not use these classes, remove them after stdlib tests are merged in the same build as the compiler
     @NotNull
     @Deprecated
     public static File[] runtimeClassesForTests() {
-        return new File[] { assertExists(new File("dist/builtins")), assertExists(new File("libraries/stdlib/build/classes/builtins")), assertExists(new File("libraries/stdlib/build/classes/main")) };
+        // TODO: replace hardcoded path with something flexible
+        return new File[] { assertExists(new File("dist/builtins")), assertExists(new File("build/kotlin-stdlib/classes/java/builtins")), assertExists(new File("build/kotlin-stdlib/classes/java/main")) };
     }
 
     @NotNull

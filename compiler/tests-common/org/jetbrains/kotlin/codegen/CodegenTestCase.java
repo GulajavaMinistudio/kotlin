@@ -76,10 +76,13 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static org.jetbrains.kotlin.checkers.CompilerTestLanguageVersionSettingsKt.parseLanguageVersionSettings;
 import static org.jetbrains.kotlin.cli.common.output.outputUtils.OutputUtilsKt.writeAllTo;
 import static org.jetbrains.kotlin.codegen.CodegenTestUtil.*;
 import static org.jetbrains.kotlin.codegen.TestUtilsKt.*;
 import static org.jetbrains.kotlin.test.KotlinTestUtils.getAnnotationsJar;
+import static org.jetbrains.kotlin.test.clientserver.TestProcessServerKt.getBoxMethodOrNull;
+import static org.jetbrains.kotlin.test.clientserver.TestProcessServerKt.getGeneratedClass;
 
 public abstract class CodegenTestCase extends KtUsefulTestCase {
     private static final String DEFAULT_TEST_FILE_NAME = "a_test";
@@ -92,6 +95,7 @@ public abstract class CodegenTestCase extends KtUsefulTestCase {
     protected ClassFileFactory classFileFactory;
     protected GeneratedClassLoader initializedClassLoader;
     protected File javaClassesOutputDirectory = null;
+    protected List<File> additionalDependencies = null;
 
     protected ConfigurationKind configurationKind = ConfigurationKind.JDK_ONLY;
     private final String defaultJvmTarget = System.getProperty(DEFAULT_JVM_TARGET_FOR_TEST);
@@ -158,8 +162,10 @@ public abstract class CodegenTestCase extends KtUsefulTestCase {
             @NotNull List<TestFile> testFilesWithConfigurationDirectives,
             @NotNull CompilerConfiguration configuration
     ) {
-        List<String> kotlinConfigurationFlags = new ArrayList<>(0);
+        LanguageVersionSettings explicitLanguageVersionSettings = null;
         LanguageVersion explicitLanguageVersion = null;
+
+        List<String> kotlinConfigurationFlags = new ArrayList<>(0);
         for (TestFile testFile : testFilesWithConfigurationDirectives) {
             kotlinConfigurationFlags.addAll(InTextDirectivesUtils.findListWithPrefixes(testFile.content, "// KOTLIN_CONFIGURATION_FLAGS:"));
 
@@ -173,12 +179,22 @@ public abstract class CodegenTestCase extends KtUsefulTestCase {
 
             String version = InTextDirectivesUtils.findStringWithPrefixes(testFile.content, "// LANGUAGE_VERSION:");
             if (version != null) {
-                assert explicitLanguageVersion == null : "Should not specify LANGUAGE_VERSION twice";
+                assertDirectivesToNull(explicitLanguageVersionSettings, explicitLanguageVersion);
                 explicitLanguageVersion = LanguageVersion.fromVersionString(version);
+            }
+
+            Map<String, String> directives = KotlinTestUtils.parseDirectives(testFile.content);
+            LanguageVersionSettings fileLanguageVersionSettings = parseLanguageVersionSettings(directives);
+            if (fileLanguageVersionSettings != null) {
+                assertDirectivesToNull(explicitLanguageVersionSettings, explicitLanguageVersion);
+                explicitLanguageVersionSettings = fileLanguageVersionSettings;
             }
         }
 
-        if (explicitLanguageVersion != null) {
+        if (explicitLanguageVersionSettings != null) {
+            CommonConfigurationKeysKt.setLanguageVersionSettings(configuration, explicitLanguageVersionSettings);
+        }
+        else if (explicitLanguageVersion != null) {
             CommonConfigurationKeysKt.setLanguageVersionSettings(
                     configuration,
                     new LanguageVersionSettingsImpl(explicitLanguageVersion, ApiVersion.createByLanguageVersion(explicitLanguageVersion))
@@ -186,6 +202,10 @@ public abstract class CodegenTestCase extends KtUsefulTestCase {
         }
 
         updateConfigurationWithFlags(configuration, kotlinConfigurationFlags);
+    }
+
+    private static void assertDirectivesToNull(@Nullable LanguageVersionSettings settings, @Nullable LanguageVersion version) {
+        assert settings == null && version == null : "Should not specify LANGUAGE_VERSION twice or together with !LANGUAGE directive";
     }
 
     private static final Map<String, Class<?>> FLAG_NAMESPACE_TO_CLASS = ImmutableMap.of(
@@ -196,6 +216,8 @@ public abstract class CodegenTestCase extends KtUsefulTestCase {
     private static final List<Class<?>> FLAG_CLASSES = ImmutableList.of(CLIConfigurationKeys.class, JVMConfigurationKeys.class);
 
     private static final Pattern BOOLEAN_FLAG_PATTERN = Pattern.compile("([+-])(([a-zA-Z_0-9]*)\\.)?([a-zA-Z_0-9]*)");
+    private static final Pattern CONSTRUCTOR_CALL_NORMALIZATION_MODE_FLAG_PATTERN = Pattern.compile(
+            "CONSTRUCTOR_CALL_NORMALIZATION_MODE=([a-zA-Z_0-9]*)");
 
     private static void updateConfigurationWithFlags(@NotNull CompilerConfiguration configuration, @NotNull List<String> flags) {
         for (String flag : flags) {
@@ -206,6 +228,15 @@ public abstract class CodegenTestCase extends KtUsefulTestCase {
                 String flagName = m.group(4);
 
                 tryApplyBooleanFlag(configuration, flag, flagEnabled, flagNamespace, flagName);
+                continue;
+            }
+
+            m = CONSTRUCTOR_CALL_NORMALIZATION_MODE_FLAG_PATTERN.matcher(flag);
+            if (m.matches()) {
+                String flagValueString = m.group(1);
+                JVMConstructorCallNormalizationMode mode = JVMConstructorCallNormalizationMode.fromStringOrNull(flagValueString);
+                assert mode != null : "Wrong CONSTRUCTOR_CALL_NORMALIZATION_MODE value: " + flagValueString;
+                configuration.put(JVMConfigurationKeys.CONSTRUCTOR_CALL_NORMALIZATION_MODE, mode);
             }
         }
     }
@@ -359,6 +390,9 @@ public abstract class CodegenTestCase extends KtUsefulTestCase {
         List<File> files = new ArrayList<>();
         if (javaClassesOutputDirectory != null) {
             files.add(javaClassesOutputDirectory);
+        }
+        if (additionalDependencies != null) {
+            files.addAll(additionalDependencies);
         }
 
         ScriptDependenciesProvider externalImportsProvider =
@@ -549,12 +583,21 @@ public abstract class CodegenTestCase extends KtUsefulTestCase {
             @Nullable File javaSourceDir
     ) {
         configurationKind = extractConfigurationKind(files);
+        boolean loadAndroidAnnotations = files.stream().anyMatch(it ->
+                InTextDirectivesUtils.isDirectiveDefined(it.content, "ANDROID_ANNOTATIONS")
+        );
 
         List<String> javacOptions = extractJavacOptions(files);
+        List<File> classpath = new ArrayList<>();
+        classpath.add(getAnnotationsJar());
+
+        if (loadAndroidAnnotations) {
+            classpath.add(ForTestCompileRuntime.androidAnnotationsForTests());
+        }
 
         CompilerConfiguration configuration = createConfiguration(
                 configurationKind, getJdkKind(files),
-                Collections.singletonList(getAnnotationsJar()),
+                classpath,
                 ArraysKt.filterNotNull(new File[] {javaSourceDir}),
                 files
         );
@@ -580,8 +623,15 @@ public abstract class CodegenTestCase extends KtUsefulTestCase {
 
             OutputUtilsKt.writeAllTo(classFileFactory, kotlinOut);
 
+            List<String> javaClasspath = new ArrayList<>();
+            javaClasspath.add(kotlinOut.getPath());
+
+            if (loadAndroidAnnotations) {
+                javaClasspath.add(ForTestCompileRuntime.androidAnnotationsForTests().getPath());
+            }
+
             javaClassesOutputDirectory = CodegenTestUtil.compileJava(
-                    findJavaSourcesInDirectory(javaSourceDir), Collections.singletonList(kotlinOut.getPath()), javacOptions
+                    findJavaSourcesInDirectory(javaSourceDir), javaClasspath, javacOptions
             );
         }
     }
@@ -711,7 +761,19 @@ public abstract class CodegenTestCase extends KtUsefulTestCase {
             result = invokeBoxInSeparateProcess(classLoader, aClass);
         }
         else {
-            result = (String) method.invoke(null);
+            ClassLoader savedClassLoader = Thread.currentThread().getContextClassLoader();
+            if (savedClassLoader != classLoader) {
+                // otherwise the test infrastructure used in the test may conflict with the one from the context classloader
+                Thread.currentThread().setContextClassLoader(classLoader);
+            }
+            try {
+                result = (String) method.invoke(null);
+            }
+            finally {
+                if (savedClassLoader != classLoader) {
+                    Thread.currentThread().setContextClassLoader(savedClassLoader);
+                }
+            }
         }
         assertEquals("OK", result);
     }

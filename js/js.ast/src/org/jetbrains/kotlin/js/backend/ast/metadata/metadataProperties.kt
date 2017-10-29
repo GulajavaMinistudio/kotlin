@@ -24,6 +24,7 @@ import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
 import org.jetbrains.kotlin.descriptors.FunctionDescriptor
 import org.jetbrains.kotlin.js.backend.ast.*
 import org.jetbrains.kotlin.resolve.inline.InlineStrategy
+import org.jetbrains.kotlin.types.KotlinType
 
 var JsName.staticRef: JsNode? by MetadataProperty(default = null)
 
@@ -40,6 +41,8 @@ var JsInvocation.inlineStrategy: InlineStrategy? by MetadataProperty(default = n
 
 var JsInvocation.isCallableReference by MetadataProperty(default = false)
 
+var JsInvocation.callableReferenceReceiver: JsExpression? by MetadataProperty(default = null)
+
 var JsInvocation.descriptor: CallableDescriptor? by MetadataProperty(default = null)
 
 var JsInvocation.psiElement: PsiElement? by MetadataProperty(default = null)
@@ -52,15 +55,21 @@ var JsNameRef.psiElement: PsiElement? by MetadataProperty(default = null)
 
 var JsFunction.isLocal: Boolean by MetadataProperty(default = false)
 
+var JsFunction.forcedReturnVariable: JsName? by MetadataProperty(default = null)
+
 var JsParameter.hasDefaultValue: Boolean by MetadataProperty(default = false)
 
 var JsInvocation.typeCheck: TypeCheck? by MetadataProperty(default = null)
 
-var JsInvocation.boxing: Boolean by MetadataProperty(default = false)
+var JsInvocation.boxing: BoxingKind by MetadataProperty(default = BoxingKind.NONE)
 
 var JsVars.exportedPackage: String? by MetadataProperty(default = null)
 
 var JsExpressionStatement.exportedTag: String? by MetadataProperty(default = null)
+
+var JsExpression.type: KotlinType? by MetadataProperty(default = null)
+
+var JsExpression.isUnit: Boolean by MetadataProperty(default = false)
 
 /**
  * For function and lambda bodies indicates what declaration corresponds to.
@@ -142,4 +151,14 @@ enum class SpecialFunction(val suggestedName: String) {
     WRAP_FUNCTION("wrapFunction"),
     TO_BOXED_CHAR("toBoxedChar"),
     UNBOX_CHAR("unboxChar"),
+    SUSPEND_CALL("suspendCall"),
+    COROUTINE_RESULT("coroutineResult"),
+    COROUTINE_CONTROLLER("coroutineController"),
+    COROUTINE_RECEIVER("coroutineReceiver")
+}
+
+enum class BoxingKind {
+    NONE,
+    BOXING,
+    UNBOXING
 }

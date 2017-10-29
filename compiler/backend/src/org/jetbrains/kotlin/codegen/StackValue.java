@@ -180,6 +180,19 @@ public abstract class StackValue {
     }
 
     @NotNull
+    public static StackValue integerConstant(int value, @NotNull Type type) {
+        if (type == Type.LONG_TYPE) {
+            return constant(Long.valueOf(value), type);
+        }
+        else if (type == Type.BYTE_TYPE || type == Type.SHORT_TYPE || type == Type.INT_TYPE) {
+            return constant(Integer.valueOf(value), type);
+        }
+        else {
+            throw new AssertionError("Unexpected integer type: " + type);
+        }
+    }
+
+    @NotNull
     public static StackValue constant(@Nullable Object value, @NotNull Type type) {
         if (type == Type.BOOLEAN_TYPE) {
             assert value instanceof Boolean : "Value for boolean constant should have boolean type: " + value;
@@ -306,9 +319,11 @@ public abstract class StackValue {
             @Nullable CallableMethod setter,
             @NotNull StackValue receiver,
             @NotNull ExpressionCodegen codegen,
-            @Nullable ResolvedCall resolvedCall
+            @Nullable ResolvedCall resolvedCall,
+            boolean skipLateinitAssertion
     ) {
-        return new Property(descriptor, backingFieldOwner, getter, setter, isStaticBackingField, fieldName, type, receiver, codegen, resolvedCall);
+        return new Property(descriptor, backingFieldOwner, getter, setter, isStaticBackingField, fieldName, type, receiver, codegen,
+                            resolvedCall, skipLateinitAssertion);
     }
 
     @NotNull
@@ -606,8 +621,8 @@ public abstract class StackValue {
         return field(FieldInfo.createForSingleton(classDescriptor, typeMapper), none());
     }
 
-    public static Field singletonViaInstance(ClassDescriptor classDescriptor, KotlinTypeMapper typeMapper) {
-        return field(FieldInfo.createSingletonViaInstance(classDescriptor, typeMapper), none());
+    public static Field createSingletonViaInstance(@NotNull ClassDescriptor classDescriptor, @NotNull KotlinTypeMapper typeMapper, @NotNull String name) {
+        return field(FieldInfo.createSingletonViaInstance(classDescriptor, typeMapper, name), none());
     }
 
     public static StackValue operation(Type type, Function1<InstructionAdapter, Unit> lambda) {
@@ -1187,20 +1202,17 @@ public abstract class StackValue {
         private final CallableMethod getter;
         private final CallableMethod setter;
         private final Type backingFieldOwner;
-
         private final PropertyDescriptor descriptor;
-
         private final String fieldName;
-        @NotNull private final ExpressionCodegen codegen;
-        @Nullable private final ResolvedCall resolvedCall;
+        private final ExpressionCodegen codegen;
+        private final ResolvedCall resolvedCall;
+        private final boolean skipLateinitAssertion;
 
         public Property(
-                @NotNull PropertyDescriptor descriptor, @Nullable Type backingFieldOwner,
-                @Nullable CallableMethod getter, @Nullable CallableMethod setter, boolean isStaticBackingField,
-                @Nullable String fieldName, @NotNull Type type,
-                @NotNull StackValue receiver,
-                @NotNull ExpressionCodegen codegen,
-                @Nullable ResolvedCall resolvedCall
+                @NotNull PropertyDescriptor descriptor, @Nullable Type backingFieldOwner, @Nullable CallableMethod getter,
+                @Nullable CallableMethod setter, boolean isStaticBackingField, @Nullable String fieldName, @NotNull Type type,
+                @NotNull StackValue receiver, @NotNull ExpressionCodegen codegen, @Nullable ResolvedCall resolvedCall,
+                boolean skipLateinitAssertion
         ) {
             super(type, isStatic(isStaticBackingField, getter), isStatic(isStaticBackingField, setter), receiver, true);
             this.backingFieldOwner = backingFieldOwner;
@@ -1210,6 +1222,7 @@ public abstract class StackValue {
             this.fieldName = fieldName;
             this.codegen = codegen;
             this.resolvedCall = resolvedCall;
+            this.skipLateinitAssertion = skipLateinitAssertion;
         }
 
         @Override
@@ -1221,7 +1234,9 @@ public abstract class StackValue {
 
                 v.visitFieldInsn(isStaticPut ? GETSTATIC : GETFIELD,
                                  backingFieldOwner.getInternalName(), fieldName, this.type.getDescriptor());
-                genNotNullAssertionForLateInitIfNeeded(v);
+                if (!skipLateinitAssertion) {
+                    genNotNullAssertionForLateInitIfNeeded(v);
+                }
                 coerceTo(type, v);
             }
             else {

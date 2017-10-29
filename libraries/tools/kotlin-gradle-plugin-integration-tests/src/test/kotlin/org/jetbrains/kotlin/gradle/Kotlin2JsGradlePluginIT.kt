@@ -195,7 +195,7 @@ class Kotlin2JsGradlePluginIT : BaseGradleIT() {
             assertFileExists(mapFilePath)
             val map = fileInWorkingDir(mapFilePath).readText()
 
-            val sourceFilePath = "prefixprefix/example/Dummy.kt"
+            val sourceFilePath = "prefixprefix/src/main/kotlin/example/Dummy.kt"
             assertTrue("Source map should contain reference to $sourceFilePath") { map.contains("\"$sourceFilePath\"") }
         }
     }
@@ -211,8 +211,8 @@ class Kotlin2JsGradlePluginIT : BaseGradleIT() {
             assertFileExists(mapFilePath)
             val map = fileInWorkingDir(mapFilePath).readText()
 
-            assertTrue("Source map should contain reference to main.kt") { map.contains("\"main.kt\"") }
-            assertTrue("Source map should contain reference to foo.kt") { map.contains("\"foo.kt\"") }
+            assertTrue("Source map should contain reference to main.kt") { map.contains("\"./src/main/kotlin/main.kt\"") }
+            assertTrue("Source map should contain reference to foo.kt") { map.contains("\"./src/main/kotlin/foo.kt\"") }
             assertTrue("Source map should contain source of main.kt") { map.contains("\"fun main(args: Array<String>) {\\n") }
             assertTrue("Source map should contain source of foo.kt") { map.contains("\"inline fun foo(): String {\\n") }
         }
@@ -225,6 +225,9 @@ class Kotlin2JsGradlePluginIT : BaseGradleIT() {
         project.build("runRhino") {
             println(output)
             assertSuccessful()
+            val pathPrefix = "mainProject/build/min"
+            assertFileExists("$pathPrefix/exampleapp.js.map")
+            assertFileExists("$pathPrefix/examplelib.js.map")
         }
     }
 
@@ -239,22 +242,25 @@ class Kotlin2JsGradlePluginIT : BaseGradleIT() {
     }
 
     @Test
-    fun testIncrementalCompilation() {
-        val project = Project("kotlin2JsICProject", "4.0")
-        project.build("build") {
+    fun testIncrementalCompilation() = Project("kotlin2JsICProject", "4.0").run {
+        build("build") {
             assertSuccessful()
             assertContains(USING_EXPERIMENTAL_JS_INCREMENTAL_COMPILATION_MESSAGE)
-            assertCompiledKotlinSources(project.relativize(project.projectDir.allKotlinFiles()))
+            assertCompiledKotlinSources(project.relativize(allKotlinFiles))
         }
 
-        val aKt = project.projectDir.getFileByName("A.kt").apply {
-            modify { it.replace("val x: String", "val x: Int") }
+        build("build") {
+            assertSuccessful()
+            assertCompiledKotlinSources(emptyList())
         }
-        val useAKt = project.projectDir.getFileByName("useA.kt")
-        project.build("build") {
+
+        projectFile("A.kt").modify {
+            it.replace("val x = 0", "val x = \"a\"")
+        }
+        build("build") {
             assertSuccessful()
             assertContains(USING_EXPERIMENTAL_JS_INCREMENTAL_COMPILATION_MESSAGE)
-            assertCompiledKotlinSources(project.relativize(aKt, useAKt))
+            assertCompiledKotlinSources(project.relativize(allKotlinFiles - projectFile("DummyInLibMain.kt")))
         }
     }
 }

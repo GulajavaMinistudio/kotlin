@@ -137,7 +137,8 @@ public class FunctionCodegen {
                         state,
                         CoroutineCodegenUtilKt.<FunctionDescriptor>unwrapInitialDescriptorForSuspendFunction(functionDescriptor),
                         function,
-                        v.getThisName()
+                        v.getThisName(),
+                        state.getConstructorCallNormalizationMode()
                 );
             }
             else {
@@ -835,7 +836,9 @@ public class FunctionCodegen {
         }
     }
 
-    private static String renderByteCodeIfAvailable(MethodVisitor mv) {
+    @SuppressWarnings("WeakerAccess") // Useful in debug
+    @Nullable
+    public static String renderByteCodeIfAvailable(@NotNull MethodVisitor mv) {
         String bytecode = null;
 
         if (mv instanceof TransformationMethodVisitor) {

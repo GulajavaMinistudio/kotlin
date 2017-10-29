@@ -1018,6 +1018,18 @@ public class JavaToKotlinConverterSingleFileTestGenerated extends AbstractJavaTo
             String fileName = KotlinTestUtils.navigationMetadata("j2k/testData/fileOrElement/class/utilityClass3.java");
             doTest(fileName);
         }
+
+        @TestMetadata("utilityClass4.java")
+        public void testUtilityClass4() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("j2k/testData/fileOrElement/class/utilityClass4.java");
+            doTest(fileName);
+        }
+
+        @TestMetadata("utilityClass5.java")
+        public void testUtilityClass5() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("j2k/testData/fileOrElement/class/utilityClass5.java");
+            doTest(fileName);
+        }
     }
 
     @TestMetadata("j2k/testData/fileOrElement/classExpression")
@@ -3638,6 +3650,18 @@ public class JavaToKotlinConverterSingleFileTestGenerated extends AbstractJavaTo
         @TestMetadata("FunctionReturnValue2.java")
         public void testFunctionReturnValue2() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("j2k/testData/fileOrElement/mutableCollections/FunctionReturnValue2.java");
+            doTest(fileName);
+        }
+
+        @TestMetadata("Iterator.java")
+        public void testIterator() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("j2k/testData/fileOrElement/mutableCollections/Iterator.java");
+            doTest(fileName);
+        }
+
+        @TestMetadata("Iterator2.java")
+        public void testIterator2() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("j2k/testData/fileOrElement/mutableCollections/Iterator2.java");
             doTest(fileName);
         }
 

@@ -20,6 +20,7 @@ import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.impl.ApplicationInfoImpl;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.io.FileSystemUtil;
@@ -27,6 +28,7 @@ import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.CharsetToolkit;
 import com.intellij.rt.execution.junit.FileComparisonFailure;
+import com.intellij.testFramework.TestLoggerFactory;
 import com.intellij.util.ReflectionUtil;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.hash.HashMap;
@@ -61,17 +63,12 @@ public abstract class KtUsefulTestCase extends TestCase {
 
     private Application application;
 
-    @NotNull
-    protected final Disposable myTestRootDisposable = new Disposable() {
-        @Override
-        public void dispose() { }
+    static {
+        Logger.setFactory(TestLoggerFactory.class);
+    }
 
-        @Override
-        public String toString() {
-            String testName = getTestName(false);
-            return KtUsefulTestCase.this.getClass() + (StringUtil.isEmpty(testName) ? "" : ".test" + testName);
-        }
-    };
+    @NotNull
+    protected final Disposable myTestRootDisposable = new TestDisposable();
 
     private static final String ourPathToKeep = null;
     private final List<String> myPathsToKeep = new ArrayList<>();
@@ -252,8 +249,10 @@ public abstract class KtUsefulTestCase extends TestCase {
             logPerClassCost(setupCost, TOTAL_SETUP_COST_MILLIS);
 
             runTest();
+            TestLoggerFactory.onTestFinished(true);
         }
         catch (Throwable running) {
+            TestLoggerFactory.onTestFinished(false);
             exception = running;
         }
         finally {
@@ -481,4 +480,17 @@ public abstract class KtUsefulTestCase extends TestCase {
     private static boolean containsStressWords(@Nullable String name) {
         return name != null && (name.contains("Stress") || name.contains("Slow"));
     }
+
+
+    public class TestDisposable implements Disposable {
+        @Override
+        public void dispose() {
+        }
+
+        @Override
+        public String toString() {
+            String testName = getTestName(false);
+            return KtUsefulTestCase.this.getClass() + (StringUtil.isEmpty(testName) ? "" : ".test" + testName);
+        }
+    };
 }

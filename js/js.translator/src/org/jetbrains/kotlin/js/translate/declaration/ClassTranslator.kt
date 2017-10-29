@@ -21,6 +21,7 @@ import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.builtins.functions.FunctionClassDescriptor
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.js.backend.ast.*
+import org.jetbrains.kotlin.js.backend.ast.metadata.forcedReturnVariable
 import org.jetbrains.kotlin.js.descriptorUtils.hasPrimaryConstructor
 import org.jetbrains.kotlin.js.translate.callTranslator.CallTranslator
 import org.jetbrains.kotlin.js.translate.context.*
@@ -208,13 +209,14 @@ class ClassTranslator private constructor(
     private fun createMetadataRef() = JsNameRef(Namer.METADATA, context().getInnerReference(descriptor))
 
     private fun addMetadataType() {
-        val kotlinType = JsNameRef(Namer.CLASS_KIND_ENUM, Namer.KOTLIN_NAME)
-        val typeRef = when {
-            DescriptorUtils.isInterface(descriptor) -> JsNameRef(Namer.CLASS_KIND_INTERFACE, kotlinType)
-            DescriptorUtils.isObject(descriptor) -> JsNameRef(Namer.CLASS_KIND_OBJECT, kotlinType)
-            else -> JsNameRef(Namer.CLASS_KIND_CLASS, kotlinType)
-        }
+        val kindBuilder = StringBuilder(Namer.CLASS_KIND_ENUM + ".")
+        kindBuilder.append(when {
+            DescriptorUtils.isInterface(descriptor) -> Namer.CLASS_KIND_INTERFACE
+            DescriptorUtils.isObject(descriptor) -> Namer.CLASS_KIND_OBJECT
+            else -> Namer.CLASS_KIND_CLASS
+        })
 
+        val typeRef = context().getReferenceToIntrinsic(kindBuilder.toString())
         metadataLiteral.propertyInitializers += JsPropertyInitializer(JsNameRef(Namer.METADATA_CLASS_KIND), typeRef)
 
         val simpleName = descriptor.name
@@ -280,6 +282,7 @@ class ClassTranslator private constructor(
         }
 
         constructorInitializer.parameters += JsParameter(thisName)
+        constructorInitializer.forcedReturnVariable = thisName
 
         // Generate super/this call to insert to beginning of the function
         val resolvedCall = BindingContextUtils.getDelegationConstructorCall(context.bindingContext(), constructorDescriptor)
@@ -389,9 +392,14 @@ class ClassTranslator private constructor(
             for (callSite in constructorCallSites) {
                 val closureQualifier = callSite.context.getArgumentForClosureConstructor(classDescriptor.thisAsReceiverParameter)
                 capturedVars.forEach { nonConstructorUsageTracker!!.used(it) }
-                val closureArgs = capturedVars.map {
+                val closureArgs = capturedVars.flatMap {
+                    val result = mutableListOf<JsExpression>()
                     val name = nonConstructorUsageTracker!!.getNameForCapturedDescriptor(it)!!
-                    JsAstUtils.pureFqn(name, closureQualifier)
+                    result += JsAstUtils.pureFqn(name, closureQualifier)
+                    if (it is TypeParameterDescriptor) {
+                        result += JsAstUtils.pureFqn(nonConstructorUsageTracker.capturedTypes[it]!!, closureQualifier)
+                    }
+                    result
                 }
                 callSite.invocationArgs.addAll(0, closureArgs)
             }
@@ -405,17 +413,29 @@ class ClassTranslator private constructor(
 
         val function = constructor.function
         val additionalStatements = mutableListOf<JsStatement>()
-        for ((i, capturedVar) in capturedVars.withIndex()) {
+        val additionalParameters = mutableListOf<JsParameter>()
+        for (capturedVar in capturedVars) {
             val fieldName = nonConstructorUsageTracker?.capturedDescriptorToJsName?.get(capturedVar)
             val name = usageTracker.capturedDescriptorToJsName[capturedVar] ?: fieldName!!
 
-            function.parameters.add(i, JsParameter(name))
+            additionalParameters += JsParameter(name)
+            val source = (constructor.descriptor as? DeclarationDescriptorWithSource)?.source
             if (fieldName != null && constructor == primaryConstructor) {
-                val source = (constructor.descriptor as? DeclarationDescriptorWithSource)?.source
                 additionalStatements += JsAstUtils.defineSimpleProperty(fieldName, name.makeRef(), source)
+            }
+
+            if (capturedVar is TypeParameterDescriptor) {
+                val typeFieldName = nonConstructorUsageTracker?.capturedTypes?.get(capturedVar)
+                val typeName = usageTracker.capturedTypes[capturedVar] ?: typeFieldName!!
+                additionalParameters += JsParameter(typeName)
+
+                if (typeFieldName != null && constructor == primaryConstructor) {
+                    additionalStatements += JsAstUtils.defineSimpleProperty(typeFieldName, typeName.makeRef(), source)
+                }
             }
         }
 
+        function.parameters.addAll(0, additionalParameters)
         function.body.statements.addAll(0, additionalStatements)
     }
 

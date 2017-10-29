@@ -16,6 +16,7 @@
 
 package org.jetbrains.kotlin.cli.common.arguments
 
+import org.jetbrains.kotlin.cli.common.messages.MessageCollector
 import org.jetbrains.kotlin.config.AnalysisFlag
 import java.util.*
 
@@ -88,8 +89,8 @@ abstract class CommonCompilerArguments : CommonToolArguments() {
     @Argument(value = "-Xmulti-platform", description = "Enable experimental language support for multi-platform projects")
     var multiPlatform: Boolean by FreezableVar(false)
 
-    @Argument(value = "-Xno-check-impl", description = "Do not check presence of 'impl' modifier in multi-platform projects")
-    var noCheckImpl: Boolean by FreezableVar(false)
+    @Argument(value = "-Xno-check-actual", description = "Do not check presence of 'actual' modifier in multi-platform projects")
+    var noCheckActual: Boolean by FreezableVar(false)
 
     @Argument(
             value = "-Xintellij-plugin-root",
@@ -105,10 +106,11 @@ abstract class CommonCompilerArguments : CommonToolArguments() {
     )
     var coroutinesState: String? by FreezableVar(WARN)
 
-    open fun configureAnalysisFlags(): MutableMap<AnalysisFlag<*>, Any> {
+    open fun configureAnalysisFlags(collector: MessageCollector): MutableMap<AnalysisFlag<*>, Any> {
         return HashMap<AnalysisFlag<*>, Any>().apply {
             put(AnalysisFlag.skipMetadataVersionCheck, skipMetadataVersionCheck)
-            put(AnalysisFlag.multiPlatformDoNotCheckImpl, noCheckImpl)
+            put(AnalysisFlag.multiPlatformDoNotCheckActual, noCheckActual)
+            put(AnalysisFlag.allowKotlinPackage, allowKotlinPackage)
         }
     }
 

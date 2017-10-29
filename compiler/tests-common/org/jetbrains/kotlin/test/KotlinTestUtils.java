@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2015 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ import com.intellij.openapi.util.ShutDownTracker;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.openapi.util.text.StringUtilRt;
 import com.intellij.openapi.vfs.CharsetToolkit;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFileFactory;
@@ -85,11 +86,11 @@ import org.jetbrains.kotlin.util.slicedMap.ReadOnlySlice;
 import org.jetbrains.kotlin.util.slicedMap.SlicedMap;
 import org.jetbrains.kotlin.util.slicedMap.WritableSlice;
 import org.jetbrains.kotlin.utils.ExceptionUtilsKt;
-import org.jetbrains.kotlin.utils.PathUtil;
 import org.junit.Assert;
 
 import javax.tools.*;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.StringWriter;
 import java.lang.reflect.Method;
@@ -342,10 +343,18 @@ public class KotlinTestUtils {
         return getHomeDirectory() + "/compiler/testData";
     }
 
+    private static String homeDir = computeHomeDirectory();
+
     @NotNull
     public static String getHomeDirectory() {
-        File resourceRoot = PathUtil.getResourcePathForClass(KotlinTestUtils.class);
-        return FileUtil.toSystemIndependentName(resourceRoot.getParentFile().getParentFile().getParent());
+        return homeDir;
+    }
+
+    @NotNull
+    private static String computeHomeDirectory() {
+        String userDir = System.getProperty("user.dir");
+        File dir = new File(userDir == null ? "." : userDir);
+        return FileUtil.toCanonicalPath(dir.getAbsolutePath());
     }
 
     public static File findMockJdkRtJar() {
@@ -380,20 +389,27 @@ public class KotlinTestUtils {
 
     @NotNull
     public static File tmpDirForTest(TestCase test) throws IOException {
-        File answer = FileUtil.createTempDirectory(test.getClass().getSimpleName(), test.getName());
+        File answer = normalizeFile(FileUtil.createTempDirectory(test.getClass().getSimpleName(), test.getName()));
         deleteOnShutdown(answer);
         return answer;
     }
 
     @NotNull
     public static File tmpDir(String name) throws IOException {
-        // we should use this form. otherwise directory will be deleted on each test
-        File answer = FileUtil.createTempDirectory(new File(System.getProperty("java.io.tmpdir")), name, "");
+        // We should use this form. otherwise directory will be deleted on each test.
+        File answer = normalizeFile(FileUtil.createTempDirectory(new File(System.getProperty("java.io.tmpdir")), name, ""));
         deleteOnShutdown(answer);
         return answer;
     }
 
-    public static void deleteOnShutdown(File file) {
+    private static File normalizeFile(File file) throws IOException {
+        // Get canonical file to be sure that it's the same as inside the compiler,
+        // for example, on Windows, if a canonical path contains any space from FileUtil.createTempDirectory we will get
+        // a File with short names (8.3) in its path and it will break some normalization passes in tests.
+        return file.getCanonicalFile();
+    }
+
+    private static void deleteOnShutdown(File file) {
         if (filesToDelete.isEmpty()) {
             ShutDownTracker.getInstance().registerShutdownTask(() -> ShutDownTracker.invokeAndWait(true, true, () -> {
                 for (File victim : filesToDelete) {
@@ -409,7 +425,7 @@ public class KotlinTestUtils {
     public static KtFile createFile(@NotNull @NonNls String name, @NotNull String text, @NotNull Project project) {
         String shortName = name.substring(name.lastIndexOf('/') + 1);
         shortName = shortName.substring(shortName.lastIndexOf('\\') + 1);
-        LightVirtualFile virtualFile = new LightVirtualFile(shortName, KotlinLanguage.INSTANCE, text) {
+        LightVirtualFile virtualFile = new LightVirtualFile(shortName, KotlinLanguage.INSTANCE, StringUtilRt.convertLineSeparators(text)) {
             @NotNull
             @Override
             public String getPath() {
@@ -430,7 +446,21 @@ public class KotlinTestUtils {
     }
 
     public static String doLoadFile(@NotNull File file) throws IOException {
-        return FileUtil.loadFile(file, CharsetToolkit.UTF8, true);
+        try {
+            return FileUtil.loadFile(file, CharsetToolkit.UTF8, true);
+        }
+        catch (FileNotFoundException fileNotFoundException) {
+            /*
+             * Unfortunately, the FileNotFoundException will only show the relative path in it's exception message.
+             * This clarifies the exception by showing the full path.
+             */
+            String messageWithFullPath = file.getAbsolutePath() + " (No such file or directory)";
+            throw new IOException(
+                    "Ensure you have your 'Working Directory' configured correctly as the root " +
+                    "Kotlin project directory in your test configuration\n\t" +
+                    messageWithFullPath,
+                    fileNotFoundException);
+        }
     }
 
     public static String getFilePath(File file) {
@@ -488,17 +518,20 @@ public class KotlinTestUtils {
         JvmContentRootsKt.addJavaSourceRoots(configuration, javaSource);
         if (jdkKind == TestJdkKind.MOCK_JDK) {
             JvmContentRootsKt.addJvmClasspathRoot(configuration, findMockJdkRtJar());
+            configuration.put(JVMConfigurationKeys.NO_JDK, true);
         }
         else if (jdkKind == TestJdkKind.MODIFIED_MOCK_JDK) {
             JvmContentRootsKt.addJvmClasspathRoot(configuration, findMockJdkRtModified());
+            configuration.put(JVMConfigurationKeys.NO_JDK, true);
         }
         else if (jdkKind == TestJdkKind.ANDROID_API) {
             JvmContentRootsKt.addJvmClasspathRoot(configuration, findAndroidApiJar());
+            configuration.put(JVMConfigurationKeys.NO_JDK, true);
         }
         else if (jdkKind == TestJdkKind.FULL_JDK_6) {
             String jdk6 = System.getenv("JDK_16");
             assert jdk6 != null : "Environment variable JDK_16 is not set";
-            JvmContentRootsKt.addJvmClasspathRoots(configuration, PathUtil.getJdkClassesRootsFromJre(getJreHome(jdk6)));
+            configuration.put(JVMConfigurationKeys.JDK_HOME, new File(jdk6));
         }
         else if (jdkKind == TestJdkKind.FULL_JDK_9) {
             File home = getJdk9HomeIfPossible();
@@ -508,9 +541,6 @@ public class KotlinTestUtils {
         }
         else if (SystemInfo.IS_AT_LEAST_JAVA9) {
             configuration.put(JVMConfigurationKeys.JDK_HOME, new File(System.getProperty("java.home")));
-        }
-        else {
-            JvmContentRootsKt.addJvmClasspathRoots(configuration, PathUtil.getJdkClassesRootsFromCurrentJre());
         }
 
         if (configurationKind.getWithRuntime()) {
@@ -563,7 +593,7 @@ public class KotlinTestUtils {
             else {
                 //noinspection ConstantConditions
                 for (File childFile : file.listFiles()) {
-                    if (childFile.getName().endsWith(".kt")) {
+                    if (childFile.getName().endsWith(".kt") || childFile.getName().endsWith(".kts")) {
                         ktFiles.add(loadJetFile(environment.getProject(), childFile));
                     }
                 }
@@ -688,6 +718,7 @@ public class KotlinTestUtils {
                 String moduleDependencies = matcher.group(2);
                 String moduleFriends = matcher.group(3);
                 if (moduleName != null) {
+                    moduleName = moduleName.trim();
                     hasModules = true;
                     module = factory.createModule(moduleName, parseModuleList(moduleDependencies), parseModuleList(moduleFriends));
                 }

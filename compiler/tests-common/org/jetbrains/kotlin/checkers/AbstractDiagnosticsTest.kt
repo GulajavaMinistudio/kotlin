@@ -20,7 +20,7 @@ import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.psi.search.GlobalSearchScope
 import org.jetbrains.kotlin.analyzer.AnalysisResult
-import org.jetbrains.kotlin.analyzer.common.DefaultAnalyzerFacade
+import org.jetbrains.kotlin.analyzer.common.CommonAnalyzerFacade
 import org.jetbrains.kotlin.cli.jvm.compiler.CliLightClassGenerationSupport
 import org.jetbrains.kotlin.cli.jvm.compiler.TopDownAnalyzerFacadeForJVM
 import org.jetbrains.kotlin.config.*
@@ -222,7 +222,7 @@ abstract class AbstractDiagnosticsTest : BaseDiagnosticsTest() {
             }
         }
 
-        return result ?: BaseDiagnosticsTest.DiagnosticTestLanguageVersionSettings(
+        return result ?: CompilerTestLanguageVersionSettings(
                 BaseDiagnosticsTest.DEFAULT_DIAGNOSTIC_TESTS_FEATURES,
                 LanguageVersionSettingsImpl.DEFAULT.apiVersion,
                 LanguageVersionSettingsImpl.DEFAULT.languageVersion
@@ -293,7 +293,7 @@ abstract class AbstractDiagnosticsTest : BaseDiagnosticsTest() {
 
         val platform = moduleDescriptor.getMultiTargetPlatform()
         if (platform == MultiTargetPlatform.Common) {
-            return DefaultAnalyzerFacade.analyzeFiles(
+            return CommonAnalyzerFacade.analyzeFiles(
                     files, moduleDescriptor.name, true, languageVersionSettings,
                     mapOf(
                             MultiTargetPlatform.CAPABILITY to MultiTargetPlatform.Common,
@@ -344,7 +344,7 @@ abstract class AbstractDiagnosticsTest : BaseDiagnosticsTest() {
         val dependencies = moduleDescriptor.testOnly_AllDependentModules
 
         // TODO: diagnostics on common code reported during the platform module analysis should be distinguished somehow
-        // E.g. "<!JVM:IMPLEMENTATION_WITHOUT_HEADER!>...<!>
+        // E.g. "<!JVM:ACTUAL_WITHOUT_EXPECT!>...<!>
         val result = ArrayList<KtFile>(0)
         for (dependency in dependencies) {
             if (dependency.getCapability(MultiTargetPlatform.CAPABILITY) == MultiTargetPlatform.Common) {
@@ -465,7 +465,9 @@ abstract class AbstractDiagnosticsTest : BaseDiagnosticsTest() {
             true
         }
 
-        return RECURSIVE.filterRecursion(stepIntoFilter).withValidationStrategy(DescriptorValidator.ValidationVisitor.errorTypesAllowed())
+        return RECURSIVE.filterRecursion(stepIntoFilter)
+                .withValidationStrategy(DescriptorValidator.ValidationVisitor.errorTypesAllowed())
+                .checkFunctionContracts(true)
     }
 
     private fun getTopLevelPackagesFromFileList(files: List<KtFile>): Set<Name> =

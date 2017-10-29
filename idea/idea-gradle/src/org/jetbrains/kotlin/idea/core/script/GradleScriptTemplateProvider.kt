@@ -20,7 +20,9 @@ import com.intellij.execution.configurations.CommandLineTokenizer
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.vfs.VirtualFile
 import org.gradle.tooling.ProjectConnection
+import org.jetbrains.kotlin.gradle.kdsl.DEFAULT_SCRIPT_NAME
 import org.jetbrains.kotlin.lexer.KotlinLexer
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.script.ScriptTemplatesProvider
@@ -28,6 +30,7 @@ import org.jetbrains.plugins.gradle.service.execution.GradleExecutionHelper
 import org.jetbrains.plugins.gradle.settings.GradleExecutionSettings
 import java.io.File
 import java.util.*
+import kotlin.script.experimental.dependencies.ScriptDependencies
 
 abstract class AbstractGradleScriptTemplatesProvider(
         project: Project, override val id: String, private val templateClass: String, private val dependencySelector: Regex
@@ -88,18 +91,25 @@ abstract class AbstractGradleScriptTemplatesProvider(
     }
 }
 
-class GradleKotlinDSLTemplateProvider(project: Project) : AbstractGradleScriptTemplatesProvider(
+abstract class AbstractGradleKotlinDSLTemplateProvider(project: Project, private val templateClass: String)
+    : AbstractGradleScriptTemplatesProvider(
         project,
         "Gradle Kotlin DSL",
-        "org.gradle.kotlin.dsl.KotlinBuildScript",
+        templateClass,
         Regex("^gradle-(?:kotlin-dsl|core).*\\.jar\$")
 ) {
     // TODO_R: check this against kotlin-dsl branch that uses daemon
     override val additionalResolverClasspath: List<File> get() =
-            // additionally need compiler jar to load gradle resolver
-            gradleLibDir.listFiles { file -> file.name.startsWith("kotlin-compiler-embeddable") }
-                    .firstOrNull()?.let(::listOf).orEmpty()
+    // additionally need compiler jar to load gradle resolver
+        gradleLibDir.listFiles { file -> file.name.startsWith("kotlin-compiler-embeddable") || file.name.startsWith("kotlin-stdlib") }
+                .firstOrNull()?.let(::listOf).orEmpty()
 }
+
+class GradleSettingsKotlinDSLTemplateProvider(project: Project)
+    : AbstractGradleKotlinDSLTemplateProvider(project, "org.gradle.kotlin.dsl.KotlinSettingsScript")
+
+class GradleKotlinDSLTemplateProvider(project: Project)
+    : AbstractGradleKotlinDSLTemplateProvider(project, "org.gradle.kotlin.dsl.KotlinBuildScript")
 
 class LegacyGradleScriptKotlinTemplateProvider(project: Project) : AbstractGradleScriptTemplatesProvider(
         project,
@@ -158,3 +168,36 @@ fun topLevelSectionCodeTextTokens(script: CharSequence, sectionIdentifier: Strin
         TopLevelSectionTokensEnumerator(script, sectionIdentifier).asSequence()
                 .filter { it.tokenType !in KtTokens.WHITE_SPACE_OR_COMMENT_BIT_SET }
                 .map { it.tokenSequence }
+
+
+private const val KOTLIN_BUILD_FILE_NAME = DEFAULT_SCRIPT_NAME
+
+class GradleScriptDefaultDependenciesProvider(
+        private val scriptDependenciesCache: ScriptDependenciesCache
+) : DefaultScriptDependenciesProvider {
+    override fun defaultDependenciesFor(scriptFile: VirtualFile): ScriptDependencies? {
+        if (scriptFile.name != KOTLIN_BUILD_FILE_NAME) return null
+
+        return previouslyAnalyzedScriptsCombinedDependencies().takeUnless { it.classpath.isEmpty() }
+    }
+
+    private fun previouslyAnalyzedScriptsCombinedDependencies(): ScriptDependencies {
+        val sources = mutableListOf<File>()
+        val binaries = mutableListOf<File>()
+        val imports = mutableListOf<String>()
+
+        scriptDependenciesCache.inspectCache { cache ->
+            cache.entries.filter { it.key.endsWith(KOTLIN_BUILD_FILE_NAME) }
+                    .map { it.value }.forEach {
+                sources += it.sources
+                binaries += it.classpath
+                imports += it.imports
+            }
+        }
+        return ScriptDependencies(
+                classpath = binaries.distinct(),
+                sources = sources.distinct(),
+                imports = imports.distinct()
+        )
+    }
+}

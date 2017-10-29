@@ -28,7 +28,9 @@ import org.jetbrains.kotlin.js.backend.ast.*;
 import org.jetbrains.kotlin.js.backend.ast.metadata.MetadataProperties;
 import org.jetbrains.kotlin.js.backend.ast.metadata.SpecialFunction;
 import org.jetbrains.kotlin.js.config.JsConfig;
+import org.jetbrains.kotlin.js.naming.NameSuggestion;
 import org.jetbrains.kotlin.js.naming.SuggestedName;
+import org.jetbrains.kotlin.js.sourceMap.SourceFilePathResolver;
 import org.jetbrains.kotlin.js.translate.declaration.ClassModelGenerator;
 import org.jetbrains.kotlin.js.translate.intrinsic.Intrinsics;
 import org.jetbrains.kotlin.js.translate.reference.CallExpressionTranslator;
@@ -292,29 +294,59 @@ public class TranslationContext {
         }
         else {
             String tag = staticContext.getTag(descriptor);
-            name = inlineFunctionContext.getImports().computeIfAbsent(tag, t -> {
-                JsExpression imported = createInlineLocalImportExpression(descriptor);
-                if (imported instanceof JsNameRef) {
-                    JsNameRef importedNameRef = (JsNameRef) imported;
-                    if (importedNameRef.getQualifier() == null && importedNameRef.getIdent().equals(Namer.getRootPackageName()) &&
-                        (descriptor instanceof PackageFragmentDescriptor || descriptor instanceof ModuleDescriptor)) {
-                        return importedNameRef.getName();
-                    }
-                }
-
-                JsName result = JsScope.declareTemporaryName(StaticContext.getSuggestedName(descriptor));
-                if (isFromCurrentModule(descriptor) && !AnnotationsUtils.isNativeObject(descriptor)) {
-                    MetadataProperties.setLocalAlias(result, getInnerNameForDescriptor(descriptor));
-                }
-                MetadataProperties.setDescriptor(result, descriptor);
-                MetadataProperties.setStaticRef(result, imported);
-                MetadataProperties.setImported(result, true);
-                inlineFunctionContext.getImportBlock().getStatements().add(JsAstUtils.newVar(result, imported));
-                return result;
-            });
+            name = inlineFunctionContext.getImports().get(tag);
+            if (name == null) {
+                name = createInlineableInnerNameForDescriptor(descriptor);
+                inlineFunctionContext.getImports().put(tag, name);
+            }
         }
 
         return name;
+    }
+
+    private JsName createInlineableInnerNameForDescriptor(@NotNull DeclarationDescriptor descriptor) {
+        assert inlineFunctionContext != null;
+
+        JsExpression imported = createInlineLocalImportExpression(descriptor);
+        if (imported instanceof JsNameRef) {
+            JsNameRef importedNameRef = (JsNameRef) imported;
+            if (importedNameRef.getQualifier() == null && importedNameRef.getIdent().equals(Namer.getRootPackageName()) &&
+                (descriptor instanceof PackageFragmentDescriptor || descriptor instanceof ModuleDescriptor)) {
+                return importedNameRef.getName();
+            }
+        }
+
+        JsName result = JsScope.declareTemporaryName(StaticContext.getSuggestedName(descriptor));
+        if (isFromCurrentModule(descriptor) && !AnnotationsUtils.isNativeObject(descriptor)) {
+            MetadataProperties.setLocalAlias(result, getInnerNameForDescriptor(descriptor));
+        }
+        MetadataProperties.setDescriptor(result, descriptor);
+        MetadataProperties.setStaticRef(result, imported);
+        MetadataProperties.setImported(result, true);
+        inlineFunctionContext.getImportBlock().getStatements().add(JsAstUtils.newVar(result, imported));
+
+        return result;
+    }
+
+    @NotNull
+    public JsExpression getReferenceToIntrinsic(@NotNull String intrinsicName) {
+        JsExpression result;
+        if (inlineFunctionContext == null || !isPublicInlineFunction()) {
+            result = staticContext.getReferenceToIntrinsic(intrinsicName);
+        }
+        else {
+            String tag = "intrinsic:" + intrinsicName;
+            result = pureFqn(inlineFunctionContext.getImports().computeIfAbsent(tag, t -> {
+                JsExpression imported = TranslationUtils.getIntrinsicFqn(intrinsicName);
+
+                JsName name = JsScope.declareTemporaryName(NameSuggestion.sanitizeName(intrinsicName));
+                MetadataProperties.setImported(name, true);
+                inlineFunctionContext.getImportBlock().getStatements().add(JsAstUtils.newVar(name, imported));
+                return name;
+            }), null);
+        }
+
+        return result;
     }
 
     @NotNull
@@ -590,29 +622,52 @@ public class TranslationContext {
     }
 
     @Nullable
-    private JsExpression captureIfNeedAndGetCapturedName(DeclarationDescriptor descriptor) {
+    private JsExpression captureIfNeedAndGetCapturedName(@NotNull DeclarationDescriptor descriptor) {
         if (usageTracker != null) {
             usageTracker.used(descriptor);
 
             JsName name = getNameForCapturedDescriptor(usageTracker, descriptor);
-            if (name != null) {
-                JsExpression result;
-                if (shouldCaptureViaThis()) {
-                    result = new JsThisRef();
-                    int depth = getOuterLocalClassDepth();
-                    for (int i = 0; i < depth; ++i) {
-                        result = new JsNameRef(Namer.OUTER_FIELD_NAME, result);
-                    }
-                    result = new JsNameRef(name, result);
-                }
-                else {
-                    result = name.makeRef();
-                }
-                return result;
-            }
+            if (name != null) return getCapturedReference(name);
         }
 
         return null;
+    }
+
+    @Nullable
+    public JsExpression captureTypeIfNeedAndGetCapturedName(@NotNull TypeParameterDescriptor descriptor) {
+        if (usageTracker == null) return null;
+
+        usageTracker.used(descriptor);
+
+        JsName name = usageTracker.getCapturedTypes().get(descriptor);
+        return name != null ? getCapturedReference(name) : null;
+    }
+
+    @NotNull
+    public JsName getCapturedTypeName(@NotNull TypeParameterDescriptor descriptor) {
+        JsName result = usageTracker != null ? usageTracker.getCapturedTypes().get(descriptor) : null;
+        if (result == null) {
+            result = getNameForDescriptor(descriptor);
+        }
+
+        return result;
+    }
+
+    @NotNull
+    private JsExpression getCapturedReference(@NotNull JsName name) {
+        JsExpression result;
+        if (shouldCaptureViaThis()) {
+            result = new JsThisRef();
+            int depth = getOuterLocalClassDepth();
+            for (int i = 0; i < depth; ++i) {
+                result = new JsNameRef(Namer.OUTER_FIELD_NAME, result);
+            }
+            result = new JsNameRef(name, result);
+        }
+        else {
+            result = name.makeRef();
+        }
+        return result;
     }
 
     private int getOuterLocalClassDepth() {
@@ -706,6 +761,19 @@ public class TranslationContext {
             return new JsThisRef();
         }
         return getNameForDescriptor(descriptor).makeRef();
+    }
+
+    @NotNull
+    public JsExpression getTypeArgumentForClosureConstructor(@NotNull TypeParameterDescriptor descriptor) {
+        JsExpression captured = null;
+        if (usageTracker != null) {
+            JsName name = usageTracker.getCapturedTypes().get(descriptor);
+            if (name != null) {
+                captured = name.makeRef();
+            }
+        }
+
+        return captured != null ? captured : getNameForDescriptor(descriptor).makeRef();
     }
 
     @Nullable
@@ -837,5 +905,10 @@ public class TranslationContext {
                 return result;
             });
         }
+    }
+
+    @NotNull
+    public SourceFilePathResolver getSourceFilePathResolver() {
+        return staticContext.getSourceFilePathResolver();
     }
 }

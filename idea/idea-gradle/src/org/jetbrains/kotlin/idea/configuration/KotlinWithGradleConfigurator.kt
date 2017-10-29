@@ -44,6 +44,7 @@ import org.jetbrains.kotlin.idea.framework.ui.ConfigureDialogWithModulesAndVersi
 import org.jetbrains.kotlin.idea.quickfix.ChangeCoroutineSupportFix
 import org.jetbrains.kotlin.idea.util.application.executeCommand
 import org.jetbrains.kotlin.idea.util.application.executeWriteCommand
+import org.jetbrains.kotlin.idea.util.application.runReadAction
 import org.jetbrains.kotlin.idea.versions.LibraryJarDescriptor
 import org.jetbrains.kotlin.idea.versions.getStdlibArtifactId
 import org.jetbrains.kotlin.psi.KtFile
@@ -64,7 +65,12 @@ abstract class KotlinWithGradleConfigurator : KotlinProjectConfigurator {
             return ConfigureKotlinStatus.CONFIGURED
         }
 
-        val buildFiles = listOf(module.getBuildScriptPsiFile(), module.project.getTopLevelBuildScriptPsiFile()).filterNotNull()
+        val buildFiles = runReadAction {
+            listOf(
+                    module.getBuildScriptPsiFile(),
+                    module.project.getTopLevelBuildScriptPsiFile()
+            ).filterNotNull()
+        }
 
         if (buildFiles.isEmpty()) {
             return ConfigureKotlinStatus.NON_APPLICABLE
@@ -112,28 +118,39 @@ abstract class KotlinWithGradleConfigurator : KotlinProjectConfigurator {
                              modulesToConfigure: List<Module>,
                              kotlinVersion: String,
                              collector: NotificationMessageCollector): HashSet<PsiFile> {
-        val changedFiles = HashSet<PsiFile>()
+        val filesToOpen = HashSet<PsiFile>()
         val buildScript = project.getTopLevelBuildScriptPsiFile()
         if (buildScript != null && canConfigureFile(buildScript)) {
             val isModified = configureBuildScript(buildScript, true, kotlinVersion, collector)
             if (isModified) {
-                changedFiles.add(buildScript)
+                filesToOpen.add(buildScript)
             }
         }
 
         for (module in modulesToConfigure) {
             val file = module.getBuildScriptPsiFile()
             if (file != null && canConfigureFile(file)) {
-                val isModified = configureBuildScript(file, false, kotlinVersion, collector)
-                if (isModified) {
-                    changedFiles.add(file)
-                }
+                configureModule(module, file, false, kotlinVersion, collector, filesToOpen)
             }
             else {
                 showErrorMessage(project, "Cannot find build.gradle file for module " + module.name)
             }
         }
-        return changedFiles
+        return filesToOpen
+    }
+
+    open fun configureModule(
+            module: Module,
+            file: PsiFile,
+            isTopLevelProjectFile: Boolean,
+            version: String,
+            collector: NotificationMessageCollector,
+            filesToOpen: MutableCollection<PsiFile>
+    ) {
+        val isModified = configureBuildScript(file, isTopLevelProjectFile, version, collector)
+        if (isModified) {
+            filesToOpen.add(file)
+        }
     }
 
     protected fun configureModuleBuildScript(file: PsiFile, version: String): Boolean {
@@ -165,7 +182,7 @@ abstract class KotlinWithGradleConfigurator : KotlinProjectConfigurator {
         return false
     }
 
-    fun configureBuildScript(
+    private fun configureBuildScript(
             file: PsiFile,
             isTopLevelProjectFile: Boolean,
             version: String,
@@ -248,7 +265,8 @@ abstract class KotlinWithGradleConfigurator : KotlinProjectConfigurator {
 
         private val KOTLIN_BUILD_SCRIPT_NAME = "build.gradle.kts"
 
-        fun getGroovyDependencySnippet(artifactName: String) = "compile \"org.jetbrains.kotlin:$artifactName:\$kotlin_version\""
+        fun getGroovyDependencySnippet(artifactName: String, scope: String = "compile") =
+                "$scope \"org.jetbrains.kotlin:$artifactName:\$kotlin_version\""
 
         fun getGroovyApplyPluginDirective(pluginName: String) = "apply plugin: '$pluginName'"
 

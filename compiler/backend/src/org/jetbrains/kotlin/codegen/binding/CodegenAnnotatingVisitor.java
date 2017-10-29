@@ -32,13 +32,13 @@ import org.jetbrains.kotlin.codegen.state.GenerationState;
 import org.jetbrains.kotlin.codegen.state.TypeMapperUtilsKt;
 import org.jetbrains.kotlin.codegen.when.SwitchCodegenProvider;
 import org.jetbrains.kotlin.codegen.when.WhenByEnumsMapping;
+import org.jetbrains.kotlin.config.LanguageVersionSettings;
 import org.jetbrains.kotlin.coroutines.CoroutineUtilKt;
 import org.jetbrains.kotlin.descriptors.*;
 import org.jetbrains.kotlin.descriptors.annotations.Annotations;
 import org.jetbrains.kotlin.descriptors.impl.AnonymousFunctionDescriptor;
 import org.jetbrains.kotlin.descriptors.impl.LocalVariableDescriptor;
-import org.jetbrains.kotlin.fileClasses.FileClasses;
-import org.jetbrains.kotlin.fileClasses.JvmFileClassesProvider;
+import org.jetbrains.kotlin.fileClasses.JvmFileClassUtil;
 import org.jetbrains.kotlin.load.java.JvmAbi;
 import org.jetbrains.kotlin.load.java.sam.SamConstructorDescriptor;
 import org.jetbrains.kotlin.load.kotlin.TypeMappingConfiguration;
@@ -57,6 +57,7 @@ import org.jetbrains.kotlin.resolve.constants.ConstantValue;
 import org.jetbrains.kotlin.resolve.constants.EnumValue;
 import org.jetbrains.kotlin.resolve.constants.NullValue;
 import org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilsKt;
+import org.jetbrains.kotlin.resolve.jvm.RuntimeAssertionsOnDeclarationBodyChecker;
 import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue;
 import org.jetbrains.kotlin.resolve.scopes.receivers.TransientReceiver;
 import org.jetbrains.kotlin.types.KotlinType;
@@ -85,18 +86,20 @@ class CodegenAnnotatingVisitor extends KtVisitorVoid {
     private final BindingContext bindingContext;
     private final GenerationState.GenerateClassFilter filter;
     private final JvmRuntimeTypes runtimeTypes;
-    private final JvmFileClassesProvider fileClassesProvider;
     private final TypeMappingConfiguration<Type> typeMappingConfiguration;
     private final SwitchCodegenProvider switchCodegenProvider;
+    private final LanguageVersionSettings languageVersionSettings;
+    private final ClassBuilderMode classBuilderMode;
 
     public CodegenAnnotatingVisitor(@NotNull GenerationState state) {
         this.bindingTrace = state.getBindingTrace();
         this.bindingContext = state.getBindingContext();
         this.filter = state.getGenerateDeclaredClassFilter();
         this.runtimeTypes = state.getJvmRuntimeTypes();
-        this.fileClassesProvider = state.getFileClassesProvider();
         this.typeMappingConfiguration = state.getTypeMapper().getTypeMappingConfiguration();
         this.switchCodegenProvider = new SwitchCodegenProvider(state);
+        this.languageVersionSettings = state.getLanguageVersionSettings();
+        this.classBuilderMode = state.getClassBuilderMode();
     }
 
     @NotNull
@@ -196,8 +199,15 @@ class CodegenAnnotatingVisitor extends KtVisitorVoid {
 
     @Override
     public void visitScript(@NotNull KtScript script) {
-        classStack.push(bindingContext.get(SCRIPT, script));
-        nameStack.push(AsmUtil.internalNameByFqNameWithoutInnerClasses(script.getFqName()));
+        ClassDescriptor scriptDescriptor = bindingContext.get(SCRIPT, script);
+        // working around a problem with shallow analysis
+        if (scriptDescriptor == null) return;
+
+        String scriptInternalName = AsmUtil.internalNameByFqNameWithoutInnerClasses(script.getFqName());
+        recordClosure(scriptDescriptor, scriptInternalName);
+
+        classStack.push(scriptDescriptor);
+        nameStack.push(scriptInternalName);
         script.acceptChildren(this);
         nameStack.pop();
         classStack.pop();
@@ -407,6 +417,8 @@ class CodegenAnnotatingVisitor extends KtVisitorVoid {
         // working around a problem with shallow analysis
         if (descriptor == null) return;
 
+        checkRuntimeAsserionsOnDeclarationBody(property, descriptor);
+
         if (descriptor instanceof LocalVariableDescriptor) {
             recordLocalVariablePropertyMetadata((LocalVariableDescriptor) descriptor);
         }
@@ -443,6 +455,14 @@ class CodegenAnnotatingVisitor extends KtVisitorVoid {
         nameStack.pop();
     }
 
+    private void checkRuntimeAsserionsOnDeclarationBody(@NotNull KtDeclaration declaration, DeclarationDescriptor descriptor) {
+        if (classBuilderMode.generateBodies) {
+            // NB This is required only for bodies generation.
+            // In light class generation can cause recursion in types resolution.
+            RuntimeAssertionsOnDeclarationBodyChecker.check(declaration, descriptor, bindingTrace, languageVersionSettings);
+        }
+    }
+
     @NotNull
     private Type getMetadataOwner(@NotNull KtProperty property) {
         for (int i = classStack.size() - 1; i >= 0; i--) {
@@ -462,7 +482,17 @@ class CodegenAnnotatingVisitor extends KtVisitorVoid {
             }
         }
 
-        return Type.getObjectType(FileClasses.getFileClassInternalName(fileClassesProvider, property.getContainingKtFile()));
+        return Type.getObjectType(JvmFileClassUtil.getFileClassInternalName(property.getContainingKtFile()));
+    }
+
+    @Override
+    public void visitPropertyAccessor(@NotNull KtPropertyAccessor accessor) {
+        PropertyAccessorDescriptor accessorDescriptor = bindingContext.get(PROPERTY_ACCESSOR, accessor);
+        if (accessorDescriptor != null) {
+            checkRuntimeAsserionsOnDeclarationBody(accessor, accessorDescriptor);
+        }
+
+        super.visitPropertyAccessor(accessor);
     }
 
     @Override
@@ -470,6 +500,8 @@ class CodegenAnnotatingVisitor extends KtVisitorVoid {
         FunctionDescriptor functionDescriptor = (FunctionDescriptor) bindingContext.get(DECLARATION_TO_DESCRIPTOR, function);
         // working around a problem with shallow analysis
         if (functionDescriptor == null) return;
+
+        checkRuntimeAsserionsOnDeclarationBody(function, functionDescriptor);
 
         String nameForClassOrPackageMember = getNameForClassOrPackageMember(functionDescriptor);
 
@@ -548,7 +580,7 @@ class CodegenAnnotatingVisitor extends KtVisitorVoid {
         else if (containingDeclaration instanceof PackageFragmentDescriptor) {
             KtFile containingFile = DescriptorToSourceUtils.getContainingFile(descriptor);
             assert containingFile != null : "File not found for " + descriptor;
-            return FileClasses.getFileClassInternalName(fileClassesProvider, containingFile) + '$' + name;
+            return JvmFileClassUtil.getFileClassInternalName(containingFile) + '$' + name;
         }
 
         return null;
@@ -728,7 +760,7 @@ class CodegenAnnotatingVisitor extends KtVisitorVoid {
             }
         }
 
-        return FileClasses.getFacadeClassInternalName(fileClassesProvider, file);
+        return JvmFileClassUtil.getFacadeClassInternalName(file);
     }
 
     private static <T> T peekFromStack(@NotNull Stack<T> stack) {

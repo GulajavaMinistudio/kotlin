@@ -67,6 +67,7 @@ import org.jetbrains.kotlin.progress.CompilationCanceledStatus
 import org.jetbrains.kotlin.utils.*
 import org.jetbrains.org.objectweb.asm.ClassReader
 import java.io.File
+import java.net.URI
 import java.util.*
 
 class KotlinBuilder : ModuleLevelBuilder(BuilderCategory.SOURCE_PROCESSOR) {
@@ -238,7 +239,13 @@ class KotlinBuilder : ModuleLevelBuilder(BuilderCategory.SOURCE_PROCESSOR) {
         val isChunkRebuilding = JavaBuilderUtil.isForcedRecompilationAllJavaModules(context)
                                 || targets.any { rebuildAfterCacheVersionChanged[it] == true }
 
-        if (!hasKotlinDirtyOrRemovedFiles(dirtyFilesHolder, chunk)) {
+        if (hasKotlinDirtyOrRemovedFiles(dirtyFilesHolder, chunk)) {
+            if (!isChunkRebuilding && !IncrementalCompilation.isEnabled()) {
+                targets.forEach { rebuildAfterCacheVersionChanged[it] = true }
+                return CHUNK_REBUILD_REQUIRED
+            }
+        }
+        else {
             if (isChunkRebuilding) {
                 targets.forEach { hasKotlin[it] = false }
             }
@@ -641,7 +648,21 @@ class KotlinBuilder : ModuleLevelBuilder(BuilderCategory.SOURCE_PROCESSOR) {
         val compilerSettings = JpsKotlinCompilerSettings.getCompilerSettings(representativeModule)
         val k2JsArguments = JpsKotlinCompilerSettings.getK2JsCompilerArguments(representativeModule)
 
-        val sourceRoots = KotlinSourceFileCollector.getRelevantSourceRoots(representativeTarget).map { it.file }
+        // Compiler starts to produce path relative to base dirs in source maps if at least one statement is true:
+        // 1) base dirs are specified;
+        // 2) prefix is specified (i.e. non-empty)
+        // Otherwise compiler produces paths relative to source maps location.
+        // We don't have UI to configure base dirs, but we have UI to configure prefix.
+        // If prefix is not specified (empty) in UI, we want to produce paths relative to source maps location
+        val sourceRoots = if (k2JsArguments.sourceMapPrefix.isNullOrBlank()) {
+            emptyList()
+        }
+        else {
+            representativeModule.contentRootsList.urls
+                    .map { URI.create(it) }
+                    .filter { it.scheme == "file" }
+                    .map { File(it.path) }
+        }
 
         val friendPaths = KotlinBuilderModuleScriptGenerator.getProductionModulesWhichInternalsAreVisible(representativeTarget).mapNotNull {
             val file = getOutputMetaFile(it, false)

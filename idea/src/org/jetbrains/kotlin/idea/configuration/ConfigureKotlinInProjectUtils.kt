@@ -17,10 +17,12 @@
 package org.jetbrains.kotlin.idea.configuration
 
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.extensions.Extensions
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.projectRoots.JavaSdkVersion
 import com.intellij.openapi.roots.DependencyScope
 import com.intellij.openapi.roots.LibraryOrderEntry
 import com.intellij.openapi.roots.ModuleRootManager
@@ -28,6 +30,7 @@ import com.intellij.openapi.roots.impl.libraries.LibraryEx
 import com.intellij.openapi.roots.libraries.PersistentLibraryKind
 import com.intellij.openapi.util.Computable
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.psi.PsiJavaModule
 import com.intellij.psi.search.DelegatingGlobalSearchScope
 import com.intellij.psi.search.FileTypeIndex
 import com.intellij.psi.search.GlobalSearchScope
@@ -35,11 +38,17 @@ import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.idea.KotlinFileType
 import org.jetbrains.kotlin.idea.configuration.ui.notifications.ConfigureKotlinNotification
 import org.jetbrains.kotlin.idea.framework.JSLibraryKind
+import org.jetbrains.kotlin.idea.quickfix.KotlinAddRequiredModuleFix
 import org.jetbrains.kotlin.idea.util.application.runReadAction
+import org.jetbrains.kotlin.idea.util.findFirstPsiJavaModule
 import org.jetbrains.kotlin.idea.util.projectStructure.allModules
+import org.jetbrains.kotlin.idea.util.projectStructure.sdk
+import org.jetbrains.kotlin.idea.util.projectStructure.version
+import org.jetbrains.kotlin.idea.versions.SuppressNotificationState
 import org.jetbrains.kotlin.idea.versions.getKotlinJvmRuntimeMarkerClass
 import org.jetbrains.kotlin.idea.versions.hasKotlinJsKjsmFile
 import org.jetbrains.kotlin.idea.vfilefinder.IDEVirtualFileFinder
+import org.jetbrains.kotlin.resolve.jvm.modules.KOTLIN_STDLIB_MODULE_NAME
 import org.jetbrains.kotlin.utils.ifEmpty
 
 data class RepositoryDescription(val id: String, val name: String, val url: String, val bintrayUrl: String?, val isSnapshot: Boolean)
@@ -90,9 +99,9 @@ fun DependencyScope.toGradleCompileScope(isAndroidModule: Boolean) = when (this)
     else -> "compile"
 }
 
-fun RepositoryDescription.toGroovyRepositorySnippet() = "maven {\nurl '$url'\n}"
+fun RepositoryDescription.toGroovyRepositorySnippet() = "maven {\n    url '$url'\n}"
 
-fun RepositoryDescription.toKotlinRepositorySnippet() = "maven {\nsetUrl(\"$url\")\n}"
+fun RepositoryDescription.toKotlinRepositorySnippet() = "maven {\n    setUrl(\"$url\")\n}"
 
 fun getRepositoryForVersion(version: String): RepositoryDescription? = when {
     isSnapshot(version) -> SNAPSHOT_REPOSITORY
@@ -131,8 +140,8 @@ fun getConfigurableModulesWithKotlinFiles(project: Project): List<ModuleSourceRo
 }
 
 fun showConfigureKotlinNotificationIfNeeded(module: Module) {
-    val moduleGroup = ModuleSourceRootMap(module.project).toModuleGroup(module)
-    if (isModuleConfigured(moduleGroup)) return
+    val moduleGroup = module.toModuleGroup()
+    if (isNotConfiguredNotificationRequired(moduleGroup)) return
 
     ConfigureKotlinNotificationManager.notify(module.project)
 }
@@ -140,7 +149,7 @@ fun showConfigureKotlinNotificationIfNeeded(module: Module) {
 fun showConfigureKotlinNotificationIfNeeded(project: Project, excludeModules: List<Module> = emptyList()) {
     val notificationString = DumbService.getInstance(project).runReadActionInSmartMode(Computable {
         val modules = getConfigurableModulesWithKotlinFiles(project).exclude(excludeModules)
-        if (modules.all(::isModuleConfigured))
+        if (modules.all(::isNotConfiguredNotificationRequired))
             null
         else
             ConfigureKotlinNotification.getNotificationString(project, excludeModules)
@@ -151,6 +160,10 @@ fun showConfigureKotlinNotificationIfNeeded(project: Project, excludeModules: Li
             ConfigureKotlinNotificationManager.notify(project, ConfigureKotlinNotification(project, excludeModules, notificationString))
         }
     }
+}
+
+fun isNotConfiguredNotificationRequired(moduleGroup: ModuleSourceRootGroup): Boolean {
+    return !SuppressNotificationState.isKotlinNotConfiguredSuppressed(moduleGroup) && isModuleConfigured(moduleGroup)
 }
 
 fun getAbleToRunConfigurators(project: Project): Collection<KotlinProjectConfigurator> {
@@ -253,7 +266,7 @@ fun isEap(version: String): Boolean {
 }
 
 fun useEapRepository(minorKotlinVersion: Int, version: String): Boolean {
-    return Regex("1\\.$minorKotlinVersion(\\.\\d)?-[A-Za-z][A-Za-z0-9-]*").matches(version) &&
+    return Regex("1\\.$minorKotlinVersion(\\.\\d\\d?)?-[A-Za-z][A-Za-z0-9-]*").matches(version) &&
            !version.startsWith("1.$minorKotlinVersion.0-dev")
 }
 
@@ -269,4 +282,20 @@ private class LibraryKindSearchScope(val module: Module,
         }
         return true
     }
+}
+
+fun addStdlibToJavaModuleInfo(module: Module, collector: NotificationMessageCollector): Boolean {
+    if (module.sdk?.version?.isAtLeast(JavaSdkVersion.JDK_1_9) != true) return false
+
+    val project = module.project
+    val javaModule: PsiJavaModule = findFirstPsiJavaModule(module) ?: return false
+
+    val success = WriteCommandAction.runWriteCommandAction(project, Computable<Boolean> {
+        KotlinAddRequiredModuleFix.addModuleRequirement(javaModule, KOTLIN_STDLIB_MODULE_NAME)
+    })
+
+    if (!success) return false
+
+    collector.addMessage("Added $KOTLIN_STDLIB_MODULE_NAME requirement to module-info in ${module.name}")
+    return true
 }

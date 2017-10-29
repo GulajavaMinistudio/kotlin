@@ -17,7 +17,10 @@
 package org.jetbrains.kotlin.js.translate.reference;
 
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import org.jetbrains.kotlin.builtins.KotlinBuiltIns;
 import org.jetbrains.kotlin.descriptors.*;
+import org.jetbrains.kotlin.descriptors.impl.AnonymousFunctionDescriptor;
 import org.jetbrains.kotlin.js.backend.ast.JsExpression;
 import org.jetbrains.kotlin.js.backend.ast.JsInvocation;
 import org.jetbrains.kotlin.js.backend.ast.JsName;
@@ -28,16 +31,28 @@ import org.jetbrains.kotlin.js.descriptorUtils.DescriptorUtilsKt;
 import org.jetbrains.kotlin.js.translate.context.TranslationContext;
 import org.jetbrains.kotlin.js.translate.utils.AnnotationsUtils;
 import org.jetbrains.kotlin.js.translate.utils.JsAstUtils;
+import org.jetbrains.kotlin.js.translate.utils.TranslationUtils;
+import org.jetbrains.kotlin.name.FqNameUnsafe;
 import org.jetbrains.kotlin.psi.KtExpression;
 import org.jetbrains.kotlin.psi.KtQualifiedExpression;
 import org.jetbrains.kotlin.psi.KtSimpleNameExpression;
 import org.jetbrains.kotlin.resolve.DescriptorUtils;
+import org.jetbrains.kotlin.types.KotlinType;
+
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 
 import static org.jetbrains.kotlin.js.translate.utils.BindingUtils.getDescriptorForReferenceExpression;
 import static org.jetbrains.kotlin.js.translate.utils.PsiUtils.getSelectorAsSimpleName;
 import static org.jetbrains.kotlin.psi.KtPsiUtil.isBackingFieldReference;
 
 public final class ReferenceTranslator {
+    private static final Set<FqNameUnsafe> DECLARATIONS_WITHOUT_SIZE_EFFECTS = new HashSet<>(Arrays.asList(
+            new FqNameUnsafe("kotlin.coroutines.experimental.intrinsics.COROUTINE_SUSPENDED"),
+            new FqNameUnsafe("kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED"),
+            KotlinBuiltIns.FQ_NAMES.unit
+    ));
 
     private ReferenceTranslator() {
     }
@@ -49,6 +64,43 @@ public final class ReferenceTranslator {
 
     @NotNull
     public static JsExpression translateAsValueReference(@NotNull DeclarationDescriptor descriptor, @NotNull TranslationContext context) {
+        JsExpression result = translateAsValueReferenceWithoutType(descriptor, context);
+        MetadataProperties.setType(result, getType(descriptor));
+        if (isValueWithoutSideEffect(descriptor)) {
+            MetadataProperties.setUnit(result, true);
+            MetadataProperties.setSideEffects(result, SideEffectKind.PURE);
+            MetadataProperties.setSynthetic(result, true);
+        }
+        return result;
+    }
+
+    @Nullable
+    private static KotlinType getType(@NotNull DeclarationDescriptor descriptor) {
+        if (descriptor instanceof ClassDescriptor) {
+            return ((ClassDescriptor) descriptor).getDefaultType();
+        }
+        else if (descriptor instanceof CallableDescriptor) {
+            if (descriptor instanceof ValueParameterDescriptor) {
+                ValueParameterDescriptor parameter = (ValueParameterDescriptor) descriptor;
+                if (parameter.getContainingDeclaration() instanceof AnonymousFunctionDescriptor) {
+                    return DescriptorUtils.getContainingModule(descriptor).getBuiltIns().getAnyType();
+                }
+                if (parameter.getContainingDeclaration() instanceof PropertySetterDescriptor) {
+                    PropertySetterDescriptor setter = (PropertySetterDescriptor) parameter.getContainingDeclaration();
+                    return TranslationUtils.getReturnTypeForCoercion(setter.getCorrespondingProperty(), false);
+                }
+            }
+            return ((CallableDescriptor) descriptor).getReturnType();
+        }
+
+        return null;
+    }
+
+    @NotNull
+    private static JsExpression translateAsValueReferenceWithoutType(
+            @NotNull DeclarationDescriptor descriptor,
+            @NotNull TranslationContext context
+    ) {
         if (AnnotationsUtils.isNativeObject(descriptor) || AnnotationsUtils.isLibraryObject(descriptor)) {
             return context.getInnerReference(descriptor);
         }
@@ -62,7 +114,7 @@ public final class ReferenceTranslator {
 
         if (descriptor instanceof PropertyDescriptor) {
             PropertyDescriptor property = (PropertyDescriptor) descriptor;
-            if (isLocallyAvailableDeclaration(context, property)) {
+            if (isLocallyAvailableDeclaration(context, property) || isValueWithoutSideEffect(property)) {
                 return context.getInnerReference(property);
             }
             else {
@@ -73,16 +125,26 @@ public final class ReferenceTranslator {
         }
 
         if (DescriptorUtils.isObject(descriptor) || DescriptorUtils.isEnumEntry(descriptor)) {
+            ClassDescriptor classDescriptor = (ClassDescriptor) descriptor;
             if (!isLocallyAvailableDeclaration(context, descriptor)) {
-                return getLazyReferenceToObject((ClassDescriptor) descriptor, context);
+                if (isValueWithoutSideEffect(classDescriptor)) {
+                    return context.getInnerReference(descriptor);
+                }
+                else {
+                    return getLazyReferenceToObject(classDescriptor, context);
+                }
             }
             else {
-                JsExpression functionRef = JsAstUtils.pureFqn(context.getNameForObjectInstance((ClassDescriptor) descriptor), null);
+                JsExpression functionRef = JsAstUtils.pureFqn(context.getNameForObjectInstance(classDescriptor), null);
                 return new JsInvocation(functionRef);
             }
         }
 
         return context.getInnerReference(descriptor);
+    }
+
+    private static boolean isValueWithoutSideEffect(@NotNull DeclarationDescriptor descriptor) {
+        return DECLARATIONS_WITHOUT_SIZE_EFFECTS.contains(DescriptorUtils.getFqName(descriptor));
     }
 
     @NotNull

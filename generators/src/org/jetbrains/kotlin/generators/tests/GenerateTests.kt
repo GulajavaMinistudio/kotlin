@@ -197,6 +197,8 @@ import java.util.*
 import java.util.regex.Pattern
 
 @Language("RegExp") private val KT_OR_KTS = """^(.+)\.(kt|kts)$"""
+@Language("RegExp") private val KT_OR_KTS_WITHOUT_DOTS_IN_NAME = """^([^.]+)\.(kt|kts)$"""
+
 @Language("RegExp") private val KT_WITHOUT_DOTS_IN_NAME = """^([^.]+)\.kt$"""
 
 fun main(args: Array<String>) {
@@ -445,15 +447,19 @@ fun main(args: Array<String>) {
 
         testClass<AbstractControlFlowTest> {
             model("cfg")
+            model("cfgWithStdLib", testMethod = "doTestWithStdLib")
         }
 
         testClass<AbstractDataFlowTest> {
             model("cfg-variables")
+            model("cfgVariablesWithStdLib", testMethod = "doTestWithStdLib")
         }
 
         testClass<AbstractPseudoValueTest> {
             model("cfg")
+            model("cfgWithStdLib", testMethod = "doTestWithStdLib")
             model("cfg-variables")
+            model("cfgVariablesWithStdLib", testMethod = "doTestWithStdLib")
         }
 
         testClass<AbstractAnnotationParameterTest> {
@@ -467,7 +473,7 @@ fun main(args: Array<String>) {
         }
 
         testClass<AbstractCompilerLightClassTest> {
-            model("asJava/lightClasses", excludeDirs = listOf("local", "ideRegression"))
+            model("asJava/lightClasses", excludeDirs = listOf("local", "ideRegression"), pattern = KT_OR_KTS_WITHOUT_DOTS_IN_NAME)
         }
 
         testClass<AbstractTypeBindingTest> {
@@ -515,6 +521,14 @@ fun main(args: Array<String>) {
             model("foreignAnnotationsJava8/tests")
         }
 
+        testClass<AbstractForeignJava8AnnotationsNoAnnotationInClasspathTest> {
+            model("foreignAnnotationsJava8/tests")
+        }
+
+        testClass<AbstractForeignJava8AnnotationsNoAnnotationInClasspathWithFastClassReadingTest> {
+            model("foreignAnnotationsJava8/tests")
+        }
+
         testClass<AbstractLoadJava8Test> {
             model("loadJava8/compiledJava", extension = "java", testMethod = "doTestCompiledJava")
             model("loadJava8/sourceJava", extension = "java", testMethod = "doTestSourceJava")
@@ -523,6 +537,10 @@ fun main(args: Array<String>) {
         testClass<AbstractLoadJava8UsingJavacTest> {
             model("loadJava8/compiledJava", extension = "java", testMethod = "doTestCompiledJava")
             model("loadJava8/sourceJava", extension = "java", testMethod = "doTestSourceJava")
+        }
+
+        testClass<AbstractLoadJava8WithFastClassReadingTest> {
+            model("loadJava8/compiledJava", extension = "java", testMethod = "doTestCompiledJava")
         }
 
         testClass<AbstractEnhancedSignaturesResolvedCallsTest> {
@@ -670,12 +688,16 @@ fun main(args: Array<String>) {
         testClass<AbstractSurroundWithTest> {
             model("codeInsight/surroundWith/if", testMethod = "doTestWithIfSurrounder")
             model("codeInsight/surroundWith/ifElse", testMethod = "doTestWithIfElseSurrounder")
+            model("codeInsight/surroundWith/ifElseExpression", testMethod = "doTestWithIfElseExpressionSurrounder")
+            model("codeInsight/surroundWith/ifElseExpressionBraces", testMethod = "doTestWithIfElseExpressionBracesSurrounder")
             model("codeInsight/surroundWith/not", testMethod = "doTestWithNotSurrounder")
             model("codeInsight/surroundWith/parentheses", testMethod = "doTestWithParenthesesSurrounder")
             model("codeInsight/surroundWith/stringTemplate", testMethod = "doTestWithStringTemplateSurrounder")
             model("codeInsight/surroundWith/when", testMethod = "doTestWithWhenSurrounder")
             model("codeInsight/surroundWith/tryCatch", testMethod = "doTestWithTryCatchSurrounder")
+            model("codeInsight/surroundWith/tryCatchExpression", testMethod = "doTestWithTryCatchExpressionSurrounder")
             model("codeInsight/surroundWith/tryCatchFinally", testMethod = "doTestWithTryCatchFinallySurrounder")
+            model("codeInsight/surroundWith/tryCatchFinallyExpression", testMethod = "doTestWithTryCatchFinallyExpressionSurrounder")
             model("codeInsight/surroundWith/tryFinally", testMethod = "doTestWithTryFinallySurrounder")
             model("codeInsight/surroundWith/functionLiteral", testMethod = "doTestWithFunctionLiteralSurrounder")
             model("codeInsight/surroundWith/withIfExpression", testMethod = "doTestWithSurroundWithIfExpression")
@@ -691,7 +713,7 @@ fun main(args: Array<String>) {
         }
 
         testClass<AbstractIntentionTest> {
-            model("intentions", pattern = "^([\\w\\-_]+)\\.kt$")
+            model("intentions", pattern = "^([\\w\\-_]+)\\.(kt|kts)$")
         }
 
         testClass<AbstractIntentionTest2> {
@@ -814,7 +836,7 @@ fun main(args: Array<String>) {
         }
 
         testClass<AbstractFindUsagesTest> {
-            model("findUsages/kotlin", pattern = """^(.+)\.0\.kt$""")
+            model("findUsages/kotlin", pattern = """^(.+)\.0\.(kt|kts)$""")
             model("findUsages/java", pattern = """^(.+)\.0\.java$""")
             model("findUsages/propertyFiles", pattern = """^(.+)\.0\.properties$""")
         }
@@ -1114,8 +1136,8 @@ fun main(args: Array<String>) {
 
     testGroup("idea/idea-gradle/tests", "idea/testData") {
         testClass<AbstractGradleConfigureProjectByChangingFileTest> {
-            model("configuration/gradle", pattern = """(\w+)_before\.gradle$""", testMethod = "doTestGradle")
-            model("configuration/gsk", pattern = """(\w+)_before\.gradle.kts$""", testMethod = "doTestGradle")
+            model("configuration/gradle", extension = null, recursive = false, testMethod = "doTestGradle")
+            model("configuration/gsk", extension = null, recursive = false, testMethod = "doTestGradle")
         }
     }
 
@@ -1129,11 +1151,11 @@ fun main(args: Array<String>) {
         }
 
         testClass<AbstractIdeLightClassTest> {
-            model("asJava/lightClasses", excludeDirs = listOf("delegation"), pattern = KT_WITHOUT_DOTS_IN_NAME)
+            model("asJava/lightClasses", excludeDirs = listOf("delegation"), pattern = KT_OR_KTS_WITHOUT_DOTS_IN_NAME)
         }
 
         testClass<AbstractIdeCompiledLightClassTest> {
-            model("asJava/lightClasses", excludeDirs = listOf("local", "compilationErrors", "ideRegression"), pattern = KT_WITHOUT_DOTS_IN_NAME)
+            model("asJava/lightClasses", excludeDirs = listOf("local", "compilationErrors", "ideRegression"), pattern = KT_OR_KTS_WITHOUT_DOTS_IN_NAME)
         }
     }
 
@@ -1400,6 +1422,10 @@ fun main(args: Array<String>) {
         testClass<AbstractParcelCheckerTest> {
             model("android/parcel/checker", excludeParentDirs = true)
         }
+
+        testClass<AbstractParcelQuickFixTest> {
+            model("android/parcel/quickfix", pattern = """^(\w+)\.((before\.Main\.\w+)|(test))$""", testMethod = "doTestWithExtraFile")
+        }
     }
 
     testGroup("idea/idea-android/tests", "idea/testData") {
@@ -1497,7 +1523,7 @@ fun main(args: Array<String>) {
             model("codegen/boxInline/defaultValues/", targetBackend = TargetBackend.JS)
         }
 
-        testClass<AbstractJsTypedArraysBoxTest> {
+        testClass<AbstractJsLegacyPrimitiveArraysBoxTest> {
             model("codegen/box/arrays", targetBackend = TargetBackend.JS)
         }
     }

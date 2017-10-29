@@ -102,8 +102,8 @@ class LazyJavaClassDescriptor(
     override fun isInner() = isInner
     override fun isData() = false
     override fun isCompanionObject() = false
-    override fun isHeader() = false
-    override fun isImpl() = false
+    override fun isExpect() = false
+    override fun isActual() = false
 
     private val typeConstructor = LazyJavaClassTypeConstructor()
     override fun getTypeConstructor(): TypeConstructor = typeConstructor
@@ -255,11 +255,9 @@ class LazyJavaClassDescriptor(
         override val supertypeLoopChecker: SupertypeLoopChecker
             get() = c.components.supertypeLoopChecker
 
-        override fun isFinal(): Boolean = isFinalClass
+        override fun isDenotable(): Boolean = true
 
-        override fun isDenotable() = true
-
-        override fun getDeclarationDescriptor() = this@LazyJavaClassDescriptor
+        override fun getDeclarationDescriptor(): ClassDescriptor = this@LazyJavaClassDescriptor
 
         override fun toString(): String = name.asString()
     }

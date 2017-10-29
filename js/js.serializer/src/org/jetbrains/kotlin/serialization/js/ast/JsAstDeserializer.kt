@@ -103,6 +103,7 @@ class JsAstDeserializer(program: JsProgram, private val sourceRoots: Iterable<Fi
     private fun deserialize(proto: ClassModel): JsClassModel {
         val superName = if (proto.hasSuperNameId()) deserializeName(proto.superNameId) else null
         return JsClassModel(deserializeName(proto.nameId), superName).apply {
+            proto.interfaceNameIdList.mapTo(interfaces) { deserializeName(it) }
             if (proto.hasPostDeclarationBlock()) {
                 postDeclarationBlock.statements += deserializeGlobalBlock(proto.postDeclarationBlock).statements
             }
@@ -222,7 +223,7 @@ class JsAstDeserializer(program: JsProgram, private val sourceRoots: Iterable<Fi
                 JsFor(initVars, condition, increment, body)
             }
             else {
-                JsFor(initExpr!!, condition, increment, body)
+                JsFor(initExpr, condition, increment, body)
             }
         }
 
@@ -522,6 +523,10 @@ class JsAstDeserializer(program: JsProgram, private val sourceRoots: Iterable<Fi
         JsAstProtoBuf.SpecialFunction.WRAP_FUNCTION -> SpecialFunction.WRAP_FUNCTION
         JsAstProtoBuf.SpecialFunction.TO_BOXED_CHAR -> SpecialFunction.TO_BOXED_CHAR
         JsAstProtoBuf.SpecialFunction.UNBOX_CHAR -> SpecialFunction.UNBOX_CHAR
+        JsAstProtoBuf.SpecialFunction.SUSPEND_CALL -> SpecialFunction.SUSPEND_CALL
+        JsAstProtoBuf.SpecialFunction.COROUTINE_RESULT -> SpecialFunction.COROUTINE_RESULT
+        JsAstProtoBuf.SpecialFunction.COROUTINE_CONTROLLER -> SpecialFunction.COROUTINE_CONTROLLER
+        JsAstProtoBuf.SpecialFunction.COROUTINE_RECEIVER -> SpecialFunction.COROUTINE_RECEIVER
     }
 
     private fun <T : JsNode> withLocation(fileId: Int?, location: Location?, action: () -> T): T {

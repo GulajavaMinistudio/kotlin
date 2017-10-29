@@ -43,7 +43,7 @@ import java.util.*
 
 object ArrayFIF : CompositeFIF() {
     @JvmField
-    val GET_INTRINSIC = intrinsify { callInfo, arguments, _ ->
+    val GET_INTRINSIC = intrinsify { callInfo, arguments, context ->
         assert(arguments.size == 1) { "Array get expression must have one argument." }
         val (indexExpression) = arguments
         JsArrayAccess(callInfo.dispatchReceiver, indexExpression)
@@ -61,7 +61,7 @@ object ArrayFIF : CompositeFIF() {
     val LENGTH_PROPERTY_INTRINSIC = BuiltInPropertyIntrinsic("length")
 
     @JvmStatic
-    fun typedArraysEnabled(config: JsConfig) = config.configuration.getBoolean(JSConfigurationKeys.TYPED_ARRAYS_ENABLED)
+    fun typedArraysEnabled(config: JsConfig) = config.configuration.get(JSConfigurationKeys.TYPED_ARRAYS_ENABLED, true)
 
     fun castOrCreatePrimitiveArray(ctx: TranslationContext, type: PrimitiveType?, arg: JsArrayLiteral): JsExpression {
         if (type == null || !typedArraysEnabled(ctx.config)) return arg
@@ -108,7 +108,12 @@ object ArrayFIF : CompositeFIF() {
             }
         }
         else {
-            "kotlin.newArrayF"
+            if (primitiveType == CHAR) {
+                "kotlin.untypedCharArrayF"
+            }
+            else {
+                "kotlin.newArrayF"
+            }
         }
     }
 
@@ -183,7 +188,7 @@ object ArrayFIF : CompositeFIF() {
                 }
             }
             else {
-                JsAstUtils.invokeKotlinFunction("newArrayF", size, fn)
+                JsAstUtils.invokeKotlinFunction(if (type == CHAR) "untypedCharArrayF" else "newArrayF", size, fn)
             }
             invocation.inlineStrategy = InlineStrategy.IN_PLACE
             val descriptor = callInfo.resolvedCall.resultingDescriptor.original

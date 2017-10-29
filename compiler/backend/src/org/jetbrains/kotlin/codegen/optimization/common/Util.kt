@@ -16,10 +16,12 @@
 
 package org.jetbrains.kotlin.codegen.optimization.common
 
+import org.jetbrains.kotlin.codegen.inline.MaxStackFrameSizeAndLocalsCalculator
 import org.jetbrains.kotlin.codegen.inline.insnText
 import org.jetbrains.kotlin.codegen.optimization.removeNodeGetNext
 import org.jetbrains.kotlin.codegen.pseudoInsns.PseudoInsn
 import org.jetbrains.kotlin.utils.addToStdlib.safeAs
+import org.jetbrains.org.objectweb.asm.MethodVisitor
 import org.jetbrains.org.objectweb.asm.Opcodes
 import org.jetbrains.org.objectweb.asm.Opcodes.*
 import org.jetbrains.org.objectweb.asm.Type
@@ -71,6 +73,14 @@ fun MethodNode.prepareForEmitting() {
 
         current = prev
     }
+    maxStack = -1
+    accept(MaxStackFrameSizeAndLocalsCalculator(
+            Opcodes.ASM5, access, desc,
+            object : MethodVisitor(Opcodes.ASM5) {
+                override fun visitMaxs(maxStack: Int, maxLocals: Int) {
+                    this@prepareForEmitting.maxStack = maxStack
+                }
+            }))
 }
 
 fun MethodNode.stripOptimizationMarkers() {
@@ -204,3 +214,6 @@ internal inline fun <reified T : AbstractInsnNode> AbstractInsnNode.isInsn(opcod
 internal inline fun <reified T : AbstractInsnNode> AbstractInsnNode.takeInsnIf(opcode: Int, condition: T.() -> Boolean): T? =
         takeIf { it.opcode == opcode }?.safeAs<T>()?.takeIf { it.condition() }
 
+fun InsnList.removeAll(nodes: Collection<AbstractInsnNode>) {
+    for (node in nodes) remove(node)
+}

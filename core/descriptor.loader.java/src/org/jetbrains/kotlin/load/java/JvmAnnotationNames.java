@@ -31,6 +31,7 @@ public final class JvmAnnotationNames {
     public static final String METADATA_DATA_FIELD_NAME = "d1";
     public static final String METADATA_STRINGS_FIELD_NAME = "d2";
     public static final String METADATA_EXTRA_STRING_FIELD_NAME = "xs";
+    public static final String METADATA_PACKAGE_NAME_FIELD_NAME = "pn";
     public static final String METADATA_MULTIFILE_CLASS_NAME_FIELD_NAME = METADATA_EXTRA_STRING_FIELD_NAME;
     public static final String METADATA_EXTRA_INT_FIELD_NAME = "xi";
 
@@ -50,6 +51,10 @@ public final class JvmAnnotationNames {
     // Just for internal use: there is no such real classes in bytecode
     public static final FqName ENHANCED_NULLABILITY_ANNOTATION = new FqName("kotlin.jvm.internal.EnhancedNullability");
     public static final FqName ENHANCED_MUTABILITY_ANNOTATION = new FqName("kotlin.jvm.internal.EnhancedMutability");
+
+    public static final FqName PARAMETER_NAME_FQ_NAME = new FqName("kotlin.annotations.jvm.internal.ParameterName");
+    public static final FqName DEFAULT_VALUE_FQ_NAME = new FqName("kotlin.annotations.jvm.internal.DefaultValue");
+    public static final FqName DEFAULT_NULL_FQ_NAME = new FqName("kotlin.annotations.jvm.internal.DefaultNull");
 
     private JvmAnnotationNames() {
     }

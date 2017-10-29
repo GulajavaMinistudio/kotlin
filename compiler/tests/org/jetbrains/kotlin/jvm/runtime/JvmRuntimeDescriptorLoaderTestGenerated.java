@@ -459,6 +459,12 @@ public class JvmRuntimeDescriptorLoaderTestGenerated extends AbstractJvmRuntimeD
                     KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/loadJava/compiledKotlin/annotations/types"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.ANY, true);
                 }
 
+                @TestMetadata("ClassLiteralArgument.kt")
+                public void testClassLiteralArgument() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/loadJava/compiledKotlin/annotations/types/ClassLiteralArgument.kt");
+                    doTest(fileName);
+                }
+
                 @TestMetadata("ReceiverParameter.kt")
                 public void testReceiverParameter() throws Exception {
                     String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/loadJava/compiledKotlin/annotations/types/ReceiverParameter.kt");
@@ -4045,6 +4051,21 @@ public class JvmRuntimeDescriptorLoaderTestGenerated extends AbstractJvmRuntimeD
             @TestMetadata("Rendering.java")
             public void testRendering() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/loadJava/compiledJava/rendering/Rendering.java");
+                doTest(fileName);
+            }
+        }
+
+        @TestMetadata("compiler/testData/loadJava/compiledJava/signatureAnnotations")
+        @TestDataPath("$PROJECT_ROOT")
+        @RunWith(JUnit3RunnerWithInners.class)
+        public static class SignatureAnnotations extends AbstractJvmRuntimeDescriptorLoaderTest {
+            public void testAllFilesPresentInSignatureAnnotations() throws Exception {
+                KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/loadJava/compiledJava/signatureAnnotations"), Pattern.compile("^(.+)\\.java$"), TargetBackend.ANY, true);
+            }
+
+            @TestMetadata("StableName.java")
+            public void testStableName() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/loadJava/compiledJava/signatureAnnotations/StableName.java");
                 doTest(fileName);
             }
         }
