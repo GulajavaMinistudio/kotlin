@@ -1,19 +1,26 @@
 
-apply { plugin("kotlin") }
+plugins {
+    kotlin("jvm")
+    id("jps-compatible")
+}
 
 dependencies {
-    compile(project(":compiler:frontend"))
-    compile(project(":compiler:frontend.script"))
-    compile(project(":compiler.tests-common"))
-    compile(project(":idea"))
-    compile(project(":idea:idea-core"))
-    compile(project(":idea:idea-jps-common"))
-    compile(ideaSdkDeps("openapi", "idea"))
+    testCompile(project(":compiler:frontend"))
+    testCompile(project(":compiler:frontend.script"))
+    testCompile(projectTests(":compiler:tests-common"))
+    testCompile(project(":idea"))
+    testCompile(project(":idea:idea-jvm"))
+    testCompile(project(":idea:idea-core"))
+    testCompile(project(":idea:idea-jps-common"))
+    testCompile(project(":kotlin-test:kotlin-test-jvm"))
+    testCompileOnly(project(":kotlin-reflect-api"))
+    testCompile(commonDep("junit:junit"))
+    testCompileOnly(intellijDep())
 }
 
 sourceSets {
-    "main" { projectDefault() }
-    "test" {}
+    "main" { }
+    "test" { projectDefault() }
 }
 
-
+testsJar()

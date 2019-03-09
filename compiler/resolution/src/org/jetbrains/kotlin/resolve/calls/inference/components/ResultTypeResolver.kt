@@ -27,7 +27,8 @@ import org.jetbrains.kotlin.types.checker.intersectTypes
 import org.jetbrains.kotlin.types.typeUtil.isPrimitiveNumberType
 
 class ResultTypeResolver(
-        val typeApproximator: TypeApproximator
+    val typeApproximator: TypeApproximator,
+    val trivialConstraintTypeInferenceOracle: TrivialConstraintTypeInferenceOracle
 ) {
     interface Context {
         fun isProperType(type: UnwrappedType): Boolean
@@ -49,8 +50,7 @@ class ResultTypeResolver(
         val superType = findSuperType(c, variableWithConstraints)
         val result = if (direction == ResolveDirection.TO_SUBTYPE || direction == ResolveDirection.UNKNOWN) {
             c.resultType(subType, superType, variableWithConstraints)
-        }
-        else {
+        } else {
             c.resultType(superType, subType, variableWithConstraints)
         }
 
@@ -58,9 +58,9 @@ class ResultTypeResolver(
     }
 
     private fun Context.resultType(
-            firstCandidate: UnwrappedType?,
-            secondCandidate: UnwrappedType?,
-            variableWithConstraints: VariableWithConstraints
+        firstCandidate: UnwrappedType?,
+        secondCandidate: UnwrappedType?,
+        variableWithConstraints: VariableWithConstraints
     ): UnwrappedType? {
         if (firstCandidate == null || secondCandidate == null) return firstCandidate ?: secondCandidate
 
@@ -68,8 +68,7 @@ class ResultTypeResolver(
 
         if (isSuitableType(secondCandidate, variableWithConstraints)) {
             return secondCandidate
-        }
-        else {
+        } else {
             return firstCandidate
         }
     }
@@ -79,6 +78,9 @@ class ResultTypeResolver(
             if (!isProperType(constraint.type)) continue
             if (!checkConstraint(constraint.type, constraint.kind, resultType)) return false
         }
+
+        if (!trivialConstraintTypeInferenceOracle.isSuitableResultedType(resultType)) return false
+
         return true
     }
 
@@ -105,8 +107,11 @@ class ResultTypeResolver(
              *
              */
 
-            return typeApproximator.approximateToSuperType(adjustedCommonSuperType, TypeApproximatorConfiguration.CapturedTypesApproximation)
-                   ?: adjustedCommonSuperType
+            return typeApproximator.approximateToSuperType(
+                adjustedCommonSuperType,
+                TypeApproximatorConfiguration.CapturedTypesApproximation
+            )
+                    ?: adjustedCommonSuperType
         }
 
         return null
@@ -127,8 +132,12 @@ class ResultTypeResolver(
                         newSupertypes.add(supertype)
                 }
 
-                TypeUtils.getDefaultPrimitiveNumberType(numberSupertypes)?.let {
-                    newSupertypes.add(it.unwrap())
+
+                val representativeNumberType = TypeUtils.getDefaultPrimitiveNumberType(numberSupertypes)
+                if (representativeNumberType != null) {
+                    newSupertypes.add(representativeNumberType.unwrap())
+                } else {
+                    newSupertypes.addAll(numberSupertypes.map { it.unwrap() })
                 }
 
                 intersectTypes(newSupertypes).makeNullableAsSpecified(commonSuperType.isMarkedNullable)
@@ -150,9 +159,9 @@ class ResultTypeResolver(
     }
 
     fun findResultIfThereIsEqualsConstraint(
-            c: Context,
-            variableWithConstraints: VariableWithConstraints,
-            allowedFixToNotProperType: Boolean = false
+        c: Context,
+        variableWithConstraints: VariableWithConstraints,
+        allowedFixToNotProperType: Boolean = false
     ): UnwrappedType? {
         val properEqualsConstraint = variableWithConstraints.constraints.filter {
             it.kind == ConstraintKind.EQUALITY && c.isProperType(it.type)
@@ -160,7 +169,7 @@ class ResultTypeResolver(
 
         if (properEqualsConstraint.isNotEmpty()) {
             return properEqualsConstraint.map { it.type }.singleBestRepresentative()?.unwrap()
-                   ?: properEqualsConstraint.first().type // seems like constraint system has contradiction
+                    ?: properEqualsConstraint.first().type // seems like constraint system has contradiction
         }
         if (!allowedFixToNotProperType) return null
 

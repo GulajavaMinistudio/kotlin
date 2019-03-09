@@ -23,16 +23,17 @@ import org.jetbrains.kotlin.descriptors.impl.AnonymousFunctionDescriptor
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.core.compareDescriptors
 import org.jetbrains.kotlin.idea.core.copied
-import org.jetbrains.kotlin.idea.core.quoteIfNeeded
 import org.jetbrains.kotlin.idea.core.setDefaultValue
 import org.jetbrains.kotlin.idea.refactoring.changeSignature.usages.KotlinCallableDefinitionUsage
 import org.jetbrains.kotlin.idea.references.KtReference
 import org.jetbrains.kotlin.idea.references.mainReference
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.addRemoveModifier.setModifierList
+import org.jetbrains.kotlin.psi.psiUtil.quoteIfNeeded
 import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.DescriptorToSourceUtils
 import org.jetbrains.kotlin.resolve.calls.callUtil.getResolvedCall
+import org.jetbrains.kotlin.resolve.calls.components.isVararg
 import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
 import org.jetbrains.kotlin.resolve.scopes.receivers.ImplicitReceiver
 import org.jetbrains.kotlin.types.isError
@@ -153,7 +154,9 @@ class KotlinParameterInfo @JvmOverloads constructor (
         val defaultRendering = currentTypeInfo.render()
         val typeSubstitutor = inheritedCallable.typeSubstitutor ?: return defaultRendering
         val currentBaseFunction = inheritedCallable.baseFunction.currentCallableDescriptor ?: return defaultRendering
-        val parameterType = currentBaseFunction.valueParameters[parameterIndex].type
+        val parameter = currentBaseFunction.valueParameters[parameterIndex]
+        if (parameter.isVararg) return defaultRendering
+        val parameterType = parameter.type
         if (parameterType.isError) return defaultRendering
         return parameterType.renderTypeWithSubstitution(typeSubstitutor, defaultRendering, true)
     }

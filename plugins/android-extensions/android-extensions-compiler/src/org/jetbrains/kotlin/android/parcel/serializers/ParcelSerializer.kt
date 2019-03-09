@@ -18,6 +18,7 @@ package org.jetbrains.kotlin.android.parcel.serializers
 
 import kotlinx.android.parcel.WriteWith
 import org.jetbrains.kotlin.android.parcel.isParcelize
+import org.jetbrains.kotlin.codegen.FrameMap
 import org.jetbrains.kotlin.codegen.state.KotlinTypeMapper
 import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.descriptors.ClassKind
@@ -54,7 +55,8 @@ interface ParcelSerializer {
     data class ParcelSerializerContext(
             val typeMapper: KotlinTypeMapper,
             val containerClassType: Type,
-            val typeParcelers: List<TypeParcelerMapping>
+            val typeParcelers: List<TypeParcelerMapping>,
+            val frameMap: FrameMap
     ) {
         fun findParcelerClass(type: KotlinType): KotlinType? {
             return typeParcelers.firstOrNull { it.first == type }?.second
@@ -81,27 +83,37 @@ interface ParcelSerializer {
             val className = asmType.className
             fun strict() = strict && !type.annotations.hasAnnotation(RAWVALUE_ANNOTATION_FQNAME)
 
-            type.annotations.findAnnotation(WRITE_WITH_FQNAME)?.let { writeWith ->
-                val parceler = writeWith.type.arguments.singleOrNull()?.type
-                if (parceler != null && !parceler.isError) {
-                    return TypeParcelerParcelSerializer(asmType, parceler, context.typeMapper)
+            fun findCustomParcelerType(type: KotlinType): KotlinType? {
+                type.annotations.findAnnotation(WRITE_WITH_FQNAME)?.let { writeWith ->
+                    val parceler = writeWith.type.arguments.singleOrNull()?.type
+                    if (parceler != null && !parceler.isError) {
+                        return parceler
+                    }
                 }
+
+                return context.findParcelerClass(type)?.takeIf { !it.isError }
             }
 
-            context.findParcelerClass(type)?.let { typeParceler ->
-                if (!typeParceler.isError) {
-                    return TypeParcelerParcelSerializer(asmType, typeParceler, context.typeMapper)
-                }
-            }
+            findCustomParcelerType(type)?.let { return TypeParcelerParcelSerializer(asmType, it, context.typeMapper) }
 
             return when {
                 asmType.descriptor == "[I"
-                    || asmType.descriptor == "[Z"
-                    || asmType.descriptor == "[B"
-                    || asmType.descriptor == "[C"
-                    || asmType.descriptor == "[D"
-                    || asmType.descriptor == "[F"
-                    || asmType.descriptor == "[L" -> PrimitiveArrayParcelSerializer(asmType)
+                        || asmType.descriptor == "[Z"
+                        || asmType.descriptor == "[B"
+                        || asmType.descriptor == "[C"
+                        || asmType.descriptor == "[S"
+                        || asmType.descriptor == "[D"
+                        || asmType.descriptor == "[F"
+                        || asmType.descriptor == "[J" -> {
+                    val customElementParcelerType = findCustomParcelerType(type.builtIns.getArrayElementType(type))
+                    if (customElementParcelerType != null) {
+                        val elementType = asmType.elementType
+                        val elementParceler = TypeParcelerParcelSerializer(elementType, customElementParcelerType, context.typeMapper)
+                        ArrayParcelSerializer(asmType, elementParceler)
+                    } else {
+                        PrimitiveArrayParcelSerializer(asmType)
+                    }
+                }
 
                 asmType.descriptor == "[Landroid/os/IBinder;" -> NullCompliantObjectParcelSerializer(asmType,
                         Method("writeBinderArray"), Method("createBinderArray"))
@@ -111,7 +123,7 @@ interface ParcelSerializer {
 
                 asmType.sort == Type.ARRAY -> {
                     val elementType = type.builtIns.getArrayElementType(type)
-                    val elementSerializer = get(elementType, typeMapper.mapTypeSafe(elementType, forceBoxed = false), context, strict = strict())
+                    val elementSerializer = get(elementType, typeMapper.mapTypeSafe(elementType, forceBoxed = true), context, strict = strict())
 
                     wrapToNullAwareIfNeeded(type, ArrayParcelSerializer(asmType, elementSerializer))
                 }
@@ -152,7 +164,7 @@ interface ParcelSerializer {
                     }
 
                     val elementSerializer = get(elementType, elementAsmType, context, forceBoxed = true, strict = strict())
-                    wrapToNullAwareIfNeeded(type, ListSetParcelSerializer(asmType, elementSerializer))
+                    wrapToNullAwareIfNeeded(type, ListSetParcelSerializer(asmType, elementSerializer, context.frameMap))
                 }
 
                 className == Map::class.java.canonicalName
@@ -168,7 +180,7 @@ interface ParcelSerializer {
                             keyType.type, typeMapper.mapTypeSafe(keyType.type, forceBoxed = true), context, forceBoxed = true, strict = strict())
                     val valueSerializer = get(
                             valueType.type, typeMapper.mapTypeSafe(valueType.type, forceBoxed = true), context, forceBoxed = true, strict = strict())
-                    wrapToNullAwareIfNeeded(type, MapParcelSerializer(asmType, keySerializer, valueSerializer))
+                    wrapToNullAwareIfNeeded(type, MapParcelSerializer(asmType, keySerializer, valueSerializer, context.frameMap))
                 }
 
                 asmType.isBoxedPrimitive() -> wrapToNullAwareIfNeeded(type, BoxedPrimitiveTypeParcelSerializer.forBoxedType(asmType))
@@ -206,16 +218,16 @@ interface ParcelSerializer {
                         Method("readSparseBooleanArray"))
 
                 asmType.isSparseIntArray() -> wrapToNullAwareIfNeeded(type, SparseArrayParcelSerializer(
-                        asmType, PrimitiveTypeParcelSerializer.getInstance(Type.INT_TYPE)))
+                        asmType, PrimitiveTypeParcelSerializer.getInstance(Type.INT_TYPE), context.frameMap))
 
                 asmType.isSparseLongArray() -> wrapToNullAwareIfNeeded(type, SparseArrayParcelSerializer(
-                        asmType, PrimitiveTypeParcelSerializer.getInstance(Type.LONG_TYPE)))
+                        asmType, PrimitiveTypeParcelSerializer.getInstance(Type.LONG_TYPE), context.frameMap))
 
                 asmType.isSparseArray() -> {
                     val elementType = type.arguments.single().type
                     val elementSerializer = get(
                             elementType, typeMapper.mapTypeSafe(elementType, forceBoxed = true), context, forceBoxed = true, strict = strict())
-                    wrapToNullAwareIfNeeded(type, SparseArrayParcelSerializer(asmType, elementSerializer))
+                    wrapToNullAwareIfNeeded(type, SparseArrayParcelSerializer(asmType, elementSerializer, context.frameMap))
                 }
 
                 type.isCharSequence() -> CharSequenceParcelSerializer(asmType)
@@ -227,6 +239,12 @@ interface ParcelSerializer {
                 asmType.isFileDescriptor() -> wrapToNullAwareIfNeeded(type, NullCompliantObjectParcelSerializer(asmType,
                         Method("writeRawFileDescriptor"),
                         Method("readRawFileDescriptor")))
+
+                // Write at least a nullability byte.
+                // We don't want parcel to be empty in case if all constructor parameters are objects
+                type.isNamedObject() -> NullAwareParcelSerializerWrapper(ObjectParcelSerializer(asmType, type, typeMapper))
+
+                type.isEnum() -> wrapToNullAwareIfNeeded(type, EnumParcelSerializer(asmType))
 
                 type.isParcelable() -> {
                     val clazz = type.constructor.declarationDescriptor as? ClassDescriptor
@@ -254,12 +272,6 @@ interface ParcelSerializer {
                         GenericParcelableParcelSerializer(asmType, context.containerClassType)
                     }
                 }
-
-                // Write at least a nullability byte.
-                // We don't want parcel to be empty in case if all constructor parameters are objects
-                type.isNamedObject() -> NullAwareParcelSerializerWrapper(ObjectParcelSerializer(asmType, type, typeMapper))
-
-                type.isEnum() -> wrapToNullAwareIfNeeded(type, EnumParcelSerializer(asmType))
 
                 type.isSerializable() -> NullCompliantObjectParcelSerializer(asmType,
                         Method("writeSerializable", "(Ljava/io/Serializable;)V"),

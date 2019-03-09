@@ -1,17 +1,19 @@
 
-apply { plugin("kotlin") }
-
-jvmTarget = "1.6"
+plugins {
+    kotlin("jvm")
+    id("jps-compatible")
+}
 
 dependencies {
-    val compile by configurations
     compile(project(":compiler:cli"))
     compile(project(":compiler:daemon-common"))
     compile(project(":compiler:incremental-compilation-impl"))
     compile(project(":kotlin-build-common"))
-    compile(ideaSdkCoreDeps(*(rootProject.extra["ideaCoreSdkJars"] as Array<String>)))
     compile(commonDep("org.fusesource.jansi", "jansi"))
     compile(commonDep("org.jline", "jline"))
+    compileOnly(project(":kotlin-scripting-compiler"))
+    compileOnly(intellijCoreDep()) { includeJars("intellij-core") }
+    compileOnly(intellijDep()) { includeIntellijCoreJarDependencies(project) }
 }
 
 sourceSets {

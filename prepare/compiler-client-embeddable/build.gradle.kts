@@ -2,21 +2,10 @@ import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 
 description = "Kotlin compiler client embeddable"
 
-buildscript {
-    repositories {
-        jcenter()
-    }
-
-    dependencies {
-        classpath("com.github.jengelman.gradle.plugins:shadow:${property("versions.shadow")}")
-    }
-}
-
 plugins {
     maven
+    kotlin("jvm")
 }
-
-apply { plugin("kotlin") }
 
 val jarContents by configurations.creating
 val testRuntimeCompilerJar by configurations.creating
@@ -24,22 +13,19 @@ val testStdlibJar by configurations.creating
 val testScriptRuntimeJar by configurations.creating
 val archives by configurations
 
-val projectsToInclude = listOf(
-        ":compiler:cli-common",
-        ":compiler:daemon-common",
-        ":kotlin-daemon-client")
-
 dependencies {
-    projectsToInclude.forEach {
-        jarContents(project(it)) { isTransitive = false }
-        testCompile(project(it))
-    }
+    jarContents(project(":compiler:cli-common")) { isTransitive = false }
+    jarContents(project(":compiler:daemon-common")) { isTransitive = false }
+    jarContents(projectRuntimeJar(":kotlin-daemon-client"))
+    testCompile(project(":compiler:cli-common"))
+    testCompile(project(":compiler:daemon-common"))
+    testCompile(projectRuntimeJar(":kotlin-daemon-client"))
     testCompile(commonDep("junit:junit"))
-    testCompile(projectDist(":kotlin-test:kotlin-test-jvm"))
-    testCompile(projectDist(":kotlin-test:kotlin-test-junit"))
-    testRuntimeCompilerJar(projectDist(":kotlin-compiler"))
-    testStdlibJar(projectDist(":kotlin-stdlib"))
-    testScriptRuntimeJar(projectDist(":kotlin-script-runtime"))
+    testCompile(project(":kotlin-test:kotlin-test-jvm"))
+    testCompile(project(":kotlin-test:kotlin-test-junit"))
+    testRuntimeCompilerJar(project(":kotlin-compiler"))
+    testStdlibJar(kotlinStdlib())
+    testScriptRuntimeJar(project(":kotlin-script-runtime"))
 }
 
 sourceSets {
@@ -51,28 +37,25 @@ sourceSets {
 }
 
 projectTest {
-    dependsOnTaskIfExistsRec("dist", project = rootProject)
+    dependsOn(":kotlin-compiler:dist",
+              ":kotlin-stdlib:dist",
+              ":kotlin-script-runtime:dist")
     workingDir = File(rootDir, "libraries/tools/kotlin-compiler-client-embeddable-test/src")
     doFirst {
-        systemProperty("kotlin.test.script.classpath", the<JavaPluginConvention>().sourceSets.getByName("test").output.classesDirs.joinToString(File.pathSeparator))
+        systemProperty("kotlin.test.script.classpath", testSourceSet.output.classesDirs.joinToString(File.pathSeparator))
         systemProperty("compilerJar", testRuntimeCompilerJar.singleFile.canonicalPath)
         systemProperty("stdlibJar", testStdlibJar.singleFile.canonicalPath)
         systemProperty("scriptRuntimeJar", testScriptRuntimeJar.singleFile.canonicalPath)
     }
 }
 
-archives.artifacts.let { artifacts ->
-    artifacts.forEach {
-        if (it.type == "jar") {
-            artifacts.remove(it)
-        }
-    }
-}
+publish()
+
+noDefaultJar()
 
 runtimeJar(task<ShadowJar>("shadowJar")) {
     from(jarContents)
 }
+
 sourcesJar()
 javadocJar()
-
-publish()

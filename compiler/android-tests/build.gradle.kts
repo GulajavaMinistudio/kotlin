@@ -1,25 +1,31 @@
 
-apply { plugin("kotlin") }
+plugins {
+    kotlin("jvm")
+    id("jps-compatible")
+}
 
 jvmTarget = "1.6"
 
 dependencies {
     compile(project(":compiler:util"))
     compile(project(":compiler:cli"))
-    compile(project(":compiler.tests-common"))
     compile(project(":compiler:frontend"))
     compile(project(":compiler:backend"))
+    compile(kotlinStdlib())
+    compile(project(":kotlin-reflect"))
+    compile(projectTests(":compiler:tests-common"))
+    compile(commonDep("junit:junit"))
+    compileOnly(intellijDep()) { includeJars("openapi") }
 
     testCompile(project(":compiler:incremental-compilation-impl"))
-    testCompile(project(":core"))
+    testCompile(project(":core:descriptors"))
+    testCompile(project(":core:descriptors.jvm"))
     testCompile(project(":compiler:frontend.java"))
     testCompile(projectTests(":jps-plugin"))
     testCompile(commonDep("junit:junit"))
-    testCompile(ideaSdkDeps("jps-model.jar", subdir = "jps"))
-    testCompile(ideaSdkDeps("groovy-all"))
-    testCompile(ideaSdkDeps("openapi", "idea"))
-    testCompile(ideaSdkDeps("jps-build-test", subdir = "jps/test"))
-    testCompile(ideaSdkDeps("jps-builders"))
+    testCompile(intellijDep()) { includeJars("openapi", "idea", "idea_rt", "groovy-all", "jps-builders", rootProject = rootProject) }
+    testCompile(intellijDep("jps-standalone")) { includeJars("jps-model") }
+    testCompile(intellijDep("jps-build-test"))
 }
 
 sourceSets {
@@ -28,5 +34,9 @@ sourceSets {
 }
 
 projectTest {
+    dependsOn(":dist")
+    doFirst {
+        environment("kotlin.tests.android.timeout", "45")
+    }
     workingDir = rootDir
 }

@@ -1,3 +1,4 @@
+// IGNORE_BACKEND: JVM_IR
 import kotlin.test.assertEquals
 
 enum class Season {
@@ -18,4 +19,4 @@ fun box() : String {
     }
 }
 
-// 1 LOOKUPSWITCH
+// 1 TABLESWITCH

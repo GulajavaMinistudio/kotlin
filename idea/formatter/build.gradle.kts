@@ -1,10 +1,13 @@
 
-apply { plugin("kotlin") }
+plugins {
+    kotlin("jvm")
+    id("jps-compatible")
+}
 
 dependencies {
     compile(project(":compiler:util"))
     compile(project(":compiler:frontend"))
-    compile(ideaSdkDeps("openapi"))
+    compileOnly(intellijDep())
 }
 
 sourceSets {

@@ -26,6 +26,7 @@ import org.jetbrains.kotlin.descriptors.PackageFragmentProvider
 import org.jetbrains.kotlin.descriptors.impl.CompositePackageFragmentProvider
 import org.jetbrains.kotlin.descriptors.impl.ModuleDescriptorImpl
 import org.jetbrains.kotlin.frontend.di.configureModule
+import org.jetbrains.kotlin.incremental.components.ExpectActualTracker
 import org.jetbrains.kotlin.incremental.components.LookupTracker
 import org.jetbrains.kotlin.js.resolve.JsPlatform
 import org.jetbrains.kotlin.resolve.*
@@ -42,7 +43,8 @@ fun createTopDownAnalyzerForJs(
         declarationProviderFactory: DeclarationProviderFactory,
         languageVersionSettings: LanguageVersionSettings,
         lookupTracker: LookupTracker,
-        fallbackPackage: PackageFragmentProvider?
+        expectActualTracker: ExpectActualTracker,
+        additionalPackages: List<PackageFragmentProvider>
 ): LazyTopDownAnalyzer {
     val storageComponentContainer = createContainer("TopDownAnalyzerForJs", JsPlatform) {
         configureModule(moduleContext, JsPlatform, TargetPlatformVersion.NoVersion, bindingTrace)
@@ -52,6 +54,7 @@ fun createTopDownAnalyzerForJs(
 
         CompilerEnvironment.configure(this)
         useInstance(lookupTracker)
+        useInstance(expectActualTracker)
 
         useInstance(languageVersionSettings)
         useImpl<ResolveSession>()
@@ -59,7 +62,7 @@ fun createTopDownAnalyzerForJs(
     }.apply {
         val packagePartProviders = mutableListOf(get<KotlinCodeAnalyzer>().packageFragmentProvider)
         val moduleDescriptor = get<ModuleDescriptorImpl>()
-        fallbackPackage?.let { packagePartProviders += it }
+        packagePartProviders += additionalPackages
         moduleDescriptor.initialize(CompositePackageFragmentProvider(packagePartProviders))
     }
     return storageComponentContainer.get<LazyTopDownAnalyzer>()

@@ -1,3 +1,4 @@
+// IGNORE_BACKEND: JVM_IR
 const val N = 42
 
 fun test(): Int {
@@ -9,4 +10,4 @@ fun test(): Int {
 }
 
 // 0 IF_ICMPEQ
-// 1 IF_ICMPGE
+// 1 IF_ICMPGT

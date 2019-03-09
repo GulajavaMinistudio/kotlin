@@ -16,6 +16,7 @@
 
 package org.jetbrains.kotlin.idea.refactoring.move.moveDeclarations
 
+import com.intellij.ide.highlighter.JavaFileType
 import com.intellij.ide.util.EditorHelper
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Ref
@@ -23,6 +24,7 @@ import com.intellij.openapi.util.text.StringUtil
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiNamedElement
 import com.intellij.psi.PsiReference
+import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.searches.ReferencesSearch
 import com.intellij.refactoring.BaseRefactoringProcessor
 import com.intellij.refactoring.move.MoveCallback
@@ -41,31 +43,38 @@ import com.intellij.util.containers.MultiMap
 import gnu.trove.THashMap
 import gnu.trove.TObjectHashingStrategy
 import org.jetbrains.kotlin.asJava.elements.KtLightDeclaration
+import org.jetbrains.kotlin.asJava.findFacadeClass
 import org.jetbrains.kotlin.asJava.namedUnwrappedElement
 import org.jetbrains.kotlin.asJava.toLightElements
 import org.jetbrains.kotlin.idea.codeInsight.shorten.addToBeShortenedDescendantsToWaitingSet
 import org.jetbrains.kotlin.idea.core.deleteSingle
+import org.jetbrains.kotlin.idea.core.quoteIfNeeded
+import org.jetbrains.kotlin.idea.refactoring.broadcastRefactoringExit
 import org.jetbrains.kotlin.idea.refactoring.fqName.getKotlinFqName
 import org.jetbrains.kotlin.idea.refactoring.move.*
 import org.jetbrains.kotlin.idea.refactoring.move.moveFilesOrDirectories.MoveKotlinClassHandler
 import org.jetbrains.kotlin.idea.search.projectScope
-import org.jetbrains.kotlin.idea.util.projectStructure.getModule
+import org.jetbrains.kotlin.idea.search.restrictByFileType
 import org.jetbrains.kotlin.idea.util.projectStructure.module
 import org.jetbrains.kotlin.lexer.KtTokens
+import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.containingClassOrObject
 import org.jetbrains.kotlin.psi.psiUtil.getElementTextWithContext
 import org.jetbrains.kotlin.psi.psiUtil.isAncestor
 import org.jetbrains.kotlin.utils.ifEmpty
 import org.jetbrains.kotlin.utils.keysToMap
-import java.lang.AssertionError
 import java.util.*
 
 interface Mover : (KtNamedDeclaration, KtElement) -> KtNamedDeclaration {
     object Default : Mover {
         override fun invoke(originalElement: KtNamedDeclaration, targetContainer: KtElement): KtNamedDeclaration {
             return when (targetContainer) {
-                is KtFile -> targetContainer.add(originalElement) as KtNamedDeclaration
+                is KtFile -> {
+                    val declarationContainer: KtElement =
+                        if (targetContainer.isScript()) targetContainer.script!!.blockExpression else targetContainer
+                    declarationContainer.add(originalElement) as KtNamedDeclaration
+                }
                 is KtClassOrObject -> targetContainer.addDeclaration(originalElement)
                 else -> error("Unexpected element: ${targetContainer.getElementTextWithContext()}")
             }.apply {
@@ -79,25 +88,36 @@ interface Mover : (KtNamedDeclaration, KtElement) -> KtNamedDeclaration {
             }
         }
     }
+}
 
-    object Idle : Mover {
-        override fun invoke(originalElement: KtNamedDeclaration, targetContainer: KtElement) = originalElement
+sealed class MoveSource {
+    abstract val elementsToMove: Collection<KtNamedDeclaration>
+
+    class Elements(override val elementsToMove: Collection<KtNamedDeclaration>) : MoveSource()
+
+    class File(val file: KtFile) : MoveSource() {
+        override val elementsToMove: Collection<KtNamedDeclaration>
+            get() = file.declarations.filterIsInstance<KtNamedDeclaration>()
     }
 }
 
+fun MoveSource(declaration: KtNamedDeclaration) = MoveSource.Elements(listOf(declaration))
+fun MoveSource(declarations: Collection<KtNamedDeclaration>) = MoveSource.Elements(declarations)
+fun MoveSource(file: KtFile) = MoveSource.File(file)
+
 class MoveDeclarationsDescriptor @JvmOverloads constructor(
-        val project: Project,
-        val elementsToMove: Collection<KtNamedDeclaration>,
-        val moveTarget: KotlinMoveTarget,
-        val delegate: MoveDeclarationsDelegate,
-        val searchInCommentsAndStrings: Boolean = true,
-        val searchInNonCode: Boolean = true,
-        val scanEntireFile: Boolean = false,
-        val deleteSourceFiles: Boolean = false,
-        val moveCallback: MoveCallback? = null,
-        val openInEditor: Boolean = false,
-        val allElementsToMove: List<PsiElement>? = null,
-        val analyzeConflicts: Boolean = true
+    val project: Project,
+    val moveSource: MoveSource,
+    val moveTarget: KotlinMoveTarget,
+    val delegate: MoveDeclarationsDelegate,
+    val searchInCommentsAndStrings: Boolean = true,
+    val searchInNonCode: Boolean = true,
+    val deleteSourceFiles: Boolean = false,
+    val moveCallback: MoveCallback? = null,
+    val openInEditor: Boolean = false,
+    val allElementsToMove: List<PsiElement>? = null,
+    val analyzeConflicts: Boolean = true,
+    val searchReferences: Boolean = true
 )
 
 class ConflictUsageInfo(element: PsiElement, val messages: Collection<String>) : UsageInfo(element)
@@ -132,7 +152,8 @@ class MoveKotlinDeclarationsProcessor(
     val project get() = descriptor.project
 
     private var nonCodeUsages: Array<NonCodeUsageInfo>? = null
-    private val elementsToMove = descriptor.elementsToMove.filter { e -> e.parent != descriptor.moveTarget.getTargetPsiIfExists(e) }
+    private val moveEntireFile = descriptor.moveSource is MoveSource.File
+    private val elementsToMove = descriptor.moveSource.elementsToMove.filter { e -> e.parent != descriptor.moveTarget.getTargetPsiIfExists(e) }
     private val kotlinToLightElementsBySourceFile = elementsToMove
             .groupBy { it.containingKtFile }
             .mapValues { it.value.keysToMap { it.toLightElements().ifEmpty { listOf(it) } } }
@@ -150,28 +171,47 @@ class MoveKotlinDeclarationsProcessor(
     fun getConflictsAsUsages(): List<UsageInfo> = conflicts.entrySet().map { ConflictUsageInfo(it.key, it.value) }
 
     public override fun findUsages(): Array<UsageInfo> {
-        if (elementsToMove.isEmpty()) return UsageInfo.EMPTY_ARRAY
+        if (!descriptor.searchReferences || elementsToMove.isEmpty()) return UsageInfo.EMPTY_ARRAY
 
         val newContainerName = descriptor.moveTarget.targetContainerFqName?.asString() ?: ""
 
-        fun canSkipUsages(element: PsiElement): Boolean {
-            val ktDeclaration = element.namedUnwrappedElement as? KtNamedDeclaration ?: return false
-            if (ktDeclaration.hasModifier(KtTokens.PRIVATE_KEYWORD)) return false
-            val (oldContainer, newContainer) = descriptor.delegate.getContainerChangeInfo(ktDeclaration, descriptor.moveTarget)
-            val targetModule = descriptor.moveTarget.targetFile?.getModule(project) ?: return false
-            return oldContainer == newContainer && ktDeclaration.module == targetModule
+        fun getSearchScope(element: PsiElement): GlobalSearchScope? {
+            val projectScope = project.projectScope()
+            val ktDeclaration = element.namedUnwrappedElement as? KtNamedDeclaration ?: return projectScope
+            if (ktDeclaration.hasModifier(KtTokens.PRIVATE_KEYWORD)) return projectScope
+            val moveTarget = descriptor.moveTarget
+            val (oldContainer, newContainer) = descriptor.delegate.getContainerChangeInfo(ktDeclaration, moveTarget)
+            val targetModule = moveTarget.getTargetModule(project) ?: return projectScope
+            if (oldContainer != newContainer || ktDeclaration.module != targetModule) return projectScope
+            // Check if facade class may change
+            if (newContainer is ContainerInfo.Package) {
+                val javaScope = projectScope.restrictByFileType(JavaFileType.INSTANCE)
+                val currentFile = ktDeclaration.containingKtFile
+                val newFile = when (moveTarget) {
+                    is KotlinMoveTargetForExistingElement -> moveTarget.targetElement as? KtFile ?: return null
+                    is KotlinMoveTargetForDeferredFile -> return javaScope
+                    else -> return null
+                }
+                val currentFacade = currentFile.findFacadeClass()
+                val newFacade = newFile.findFacadeClass()
+                return if (currentFacade?.qualifiedName != newFacade?.qualifiedName) javaScope else null
+            }
+            return null
         }
 
         fun collectUsages(kotlinToLightElements: Map<KtNamedDeclaration, List<PsiNamedElement>>, result: MutableCollection<UsageInfo>) {
             kotlinToLightElements.values.flatten().flatMapTo(result) { lightElement ->
-                if (canSkipUsages(lightElement)) return@flatMapTo emptyList()
+                val searchScope = getSearchScope(lightElement) ?: return@flatMapTo emptyList()
 
                 val newFqName = StringUtil.getQualifiedName(newContainerName, lightElement.name)
+                val newFqNameForKt = StringUtil.getQualifiedName(
+                    newContainerName,
+                    lightElement.namedUnwrappedElement?.name?: lightElement.name
+                )
 
                 val foundReferences = HashSet<PsiReference>()
-                val projectScope = project.projectScope()
                 val results = ReferencesSearch
-                        .search(lightElement, projectScope)
+                        .search(lightElement, searchScope)
                         .mapNotNullTo(ArrayList()) { ref ->
                             if (foundReferences.add(ref) && elementsToMove.none { it.isAncestor(ref.element)}) {
                                 createMoveUsageInfoIfPossible(ref, lightElement, true, false)
@@ -179,14 +219,14 @@ class MoveKotlinDeclarationsProcessor(
                             else null
                         }
 
-                val name = lightElement.getKotlinFqName()?.asString()
+                val name = lightElement.getKotlinFqName()?.quoteIfNeeded()?.asString()
                 if (name != null) {
                     TextOccurrencesUtil.findNonCodeUsages(
                             lightElement,
                             name,
                             descriptor.searchInCommentsAndStrings,
                             descriptor.searchInNonCode,
-                            newFqName,
+                            FqName(newFqName).quoteIfNeeded().asString(),
                             results
                     )
                 }
@@ -194,6 +234,19 @@ class MoveKotlinDeclarationsProcessor(
                 MoveClassHandler.EP_NAME.extensions.forEach { handler ->
                     if (handler !is MoveKotlinClassHandler) handler.preprocessUsages(results)
                 }
+
+                results
+                    .filter { it is NonCodeUsageInfo && it.file is KtFile }
+                    .forEach {
+                        val newText = NonCodeUsageInfo::class.java.getField("newText")
+                        // A 'newText' is marked as final initially, but here we need to change it to prevent
+                        // light-class names in kotlin files.
+                        val oldAccessibility = newText.isAccessible
+                        newText.isAccessible = true
+                        newText.set(it, newFqNameForKt)
+                        // Restore initial accessibility of 'newText' field.
+                        newText.isAccessible = oldAccessibility
+                    }
 
                 results
             }
@@ -211,7 +264,7 @@ class MoveKotlinDeclarationsProcessor(
             val internalUsages = LinkedHashSet<UsageInfo>()
             val externalUsages = LinkedHashSet<UsageInfo>()
 
-            if (descriptor.scanEntireFile) {
+            if (moveEntireFile) {
                 val changeInfo = ContainerChangeInfo(
                         ContainerInfo.Package(sourceFile.packageFqName),
                         descriptor.moveTarget.targetContainerFqName?.let { ContainerInfo.Package(it) } ?: ContainerInfo.UnknownPackage
@@ -250,6 +303,7 @@ class MoveKotlinDeclarationsProcessor(
             val targetContainer = moveTarget.getOrCreateTargetPsi(declaration)
                                   ?: throw AssertionError("Couldn't create Kotlin file for: ${declaration::class.java}: ${declaration.text}")
             descriptor.delegate.preprocessDeclaration(descriptor, declaration)
+            if (moveEntireFile) return declaration
             return mover(declaration, targetContainer).apply {
                 addToBeShortenedDescendantsToWaitingSet()
             }
@@ -294,7 +348,12 @@ class MoveKotlinDeclarationsProcessor(
                 }
             }
 
-            newDeclarations.forEach { newInternalUsages += restoreInternalUsages(it, oldToNewElementsMapping) }
+            val internalUsageScopes: List<KtElement> = if (moveEntireFile) {
+                newDeclarations.asSequence().map { it.containingKtFile }.distinct().toList()
+            } else {
+                newDeclarations
+            }
+            internalUsageScopes.forEach { newInternalUsages += restoreInternalUsages(it, oldToNewElementsMapping) }
 
             usagesToProcess += newInternalUsages
 
@@ -316,6 +375,14 @@ class MoveKotlinDeclarationsProcessor(
 
     fun execute(usages: List<UsageInfo>) {
         execute(usages.toTypedArray())
+    }
+
+    override fun doRun() {
+        try {
+            super.doRun()
+        } finally {
+            broadcastRefactoringExit(myProject, refactoringId)
+        }
     }
 
     override fun getCommandName(): String = REFACTORING_NAME

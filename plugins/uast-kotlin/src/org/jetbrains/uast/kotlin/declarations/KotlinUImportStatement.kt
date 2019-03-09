@@ -25,11 +25,17 @@ import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.uast.UElement
 import org.jetbrains.uast.UImportStatement
 import org.jetbrains.uast.USimpleNameReferenceExpression
+import org.jetbrains.uast.kotlin.internal.DelegatedMultiResolve
 
 class KotlinUImportStatement(
         override val psi: KtImportDirective,
         givenParent: UElement?
-) : KotlinAbstractUElement(givenParent), UImportStatement {
+) : KotlinAbstractUElement(givenParent), UImportStatement, DelegatedMultiResolve {
+
+    override val javaPsi = null
+
+    override val sourcePsi = psi
+
     override val isOnDemand: Boolean
         get() = psi.isAllUnder
 
@@ -59,7 +65,7 @@ class KotlinUImportStatement(
             val reference = psi.getQualifiedElementSelector() as? KtReferenceExpression ?: return null
             val bindingContext = reference.analyze()
             val referenceTarget = bindingContext[BindingContext.REFERENCE_TARGET, reference] ?: return null
-            return referenceTarget.toSource()?.getMaybeLightElement(this)
+            return referenceTarget.toSource()?.getMaybeLightElement()
         }
     }
 }

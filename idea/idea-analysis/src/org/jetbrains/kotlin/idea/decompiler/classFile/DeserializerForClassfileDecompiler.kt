@@ -20,6 +20,7 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.vfs.VirtualFile
 import org.jetbrains.kotlin.builtins.DefaultBuiltIns
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
+import org.jetbrains.kotlin.contracts.ContractDeserializerImpl
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
 import org.jetbrains.kotlin.descriptors.NotFoundClasses
 import org.jetbrains.kotlin.idea.caches.IDEKotlinBinaryClassCache
@@ -28,18 +29,19 @@ import org.jetbrains.kotlin.idea.decompiler.textBuilder.LoggingErrorReporter
 import org.jetbrains.kotlin.idea.decompiler.textBuilder.ResolveEverythingToKotlinAnyLocalClassifierResolver
 import org.jetbrains.kotlin.incremental.components.LookupTracker
 import org.jetbrains.kotlin.load.java.structure.JavaClass
+import org.jetbrains.kotlin.load.java.structure.classId
 import org.jetbrains.kotlin.load.kotlin.*
+import org.jetbrains.kotlin.load.kotlin.KotlinClassFinder.Result.KotlinClass
+import org.jetbrains.kotlin.metadata.jvm.deserialization.JvmProtoBufUtil
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.resolve.TargetPlatform
 import org.jetbrains.kotlin.resolve.jvm.platform.JvmPlatform
-import org.jetbrains.kotlin.serialization.ClassDataWithSource
+import org.jetbrains.kotlin.serialization.deserialization.ClassData
 import org.jetbrains.kotlin.serialization.deserialization.ClassDataFinder
-import org.jetbrains.kotlin.serialization.deserialization.ContractDeserializer
 import org.jetbrains.kotlin.serialization.deserialization.DeserializationComponents
 import org.jetbrains.kotlin.serialization.deserialization.DeserializationConfiguration
 import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedPackageMemberScope
-import org.jetbrains.kotlin.serialization.jvm.JvmProtoBufUtil
 import java.io.InputStream
 
 fun DeserializerForClassfileDecompiler(classFile: VirtualFile): DeserializerForClassfileDecompiler {
@@ -66,11 +68,17 @@ class DeserializerForClassfileDecompiler(
         val annotationAndConstantLoader =
                 BinaryClassAnnotationAndConstantLoaderImpl(moduleDescriptor, notFoundClasses, storageManager, classFinder)
 
+        val configuration = object : DeserializationConfiguration {
+            override val readDeserializedContracts: Boolean
+                get() = true
+        }
+
         deserializationComponents = DeserializationComponents(
-                storageManager, moduleDescriptor, DeserializationConfiguration.Default, classDataFinder, annotationAndConstantLoader,
+                storageManager, moduleDescriptor, configuration, classDataFinder, annotationAndConstantLoader,
                 packageFragmentProvider, ResolveEverythingToKotlinAnyLocalClassifierResolver(builtIns), LoggingErrorReporter(LOG),
                 LookupTracker.DO_NOTHING, JavaFlexibleTypeDeserializer, emptyList(), notFoundClasses,
-                ContractDeserializer.DEFAULT
+                ContractDeserializerImpl(configuration, storageManager),
+                extensionRegistryLite = JvmProtoBufUtil.EXTENSION_REGISTRY
         )
     }
 
@@ -89,8 +97,9 @@ class DeserializerForClassfileDecompiler(
         }
         val (nameResolver, packageProto) = JvmProtoBufUtil.readPackageDataFrom(annotationData, strings)
         val membersScope = DeserializedPackageMemberScope(
-                createDummyPackageFragment(packageFqName), packageProto, nameResolver,
-                JvmPackagePartSource(binaryClassForPackageClass), deserializationComponents
+            createDummyPackageFragment(header.packageName?.let(::FqName) ?: facadeFqName.parent()),
+            packageProto, nameResolver, header.metadataVersion,
+            JvmPackagePartSource(binaryClassForPackageClass, packageProto, nameResolver), deserializationComponents
         ) { emptyList() }
         return membersScope.getContributedDescriptors().toList()
     }
@@ -104,16 +113,16 @@ class DirectoryBasedClassFinder(
         val packageDirectory: VirtualFile,
         val directoryPackageFqName: FqName
 ) : KotlinClassFinder {
-    override fun findKotlinClass(javaClass: JavaClass) = findKotlinClass(javaClass.classId)
+    override fun findKotlinClassOrContent(javaClass: JavaClass) = findKotlinClassOrContent(javaClass.classId!!)
 
-    override fun findKotlinClass(classId: ClassId): KotlinJvmBinaryClass? {
+    override fun findKotlinClassOrContent(classId: ClassId): KotlinClassFinder.Result? {
         if (classId.packageFqName != directoryPackageFqName) {
             return null
         }
         val targetName = classId.relativeClassName.pathSegments().joinToString("$", postfix = ".class")
         val virtualFile = packageDirectory.findChild(targetName)
         if (virtualFile != null && isKotlinWithCompatibleAbiVersion(virtualFile)) {
-            return IDEKotlinBinaryClassCache.getKotlinBinaryClass(virtualFile)
+            return IDEKotlinBinaryClassCache.getKotlinBinaryClass(virtualFile)?.let(::KotlinClass)
         }
         return null
     }
@@ -132,7 +141,7 @@ class DirectoryBasedDataFinder(
         val classFinder: DirectoryBasedClassFinder,
         val log: Logger
 ) : ClassDataFinder {
-    override fun findClassData(classId: ClassId): ClassDataWithSource? {
+    override fun findClassData(classId: ClassId): ClassData? {
         val binaryClass = classFinder.findKotlinClass(classId) ?: return null
         val classHeader = binaryClass.classHeader
         val data = classHeader.data
@@ -146,13 +155,7 @@ class DirectoryBasedDataFinder(
             return null
         }
 
-        return ClassDataWithSource(JvmProtoBufUtil.readClassDataFrom(data, strings), KotlinJvmBinarySourceElement(binaryClass))
+        val (nameResolver, classProto) = JvmProtoBufUtil.readClassDataFrom(data, strings)
+        return ClassData(nameResolver, classProto, classHeader.metadataVersion, KotlinJvmBinarySourceElement(binaryClass))
     }
 }
-
-
-private val JavaClass.classId: ClassId
-    get() {
-        val outer = outerClass
-        return if (outer == null) ClassId.topLevel(fqName!!) else outer.classId.createNestedClassId(name)
-    }

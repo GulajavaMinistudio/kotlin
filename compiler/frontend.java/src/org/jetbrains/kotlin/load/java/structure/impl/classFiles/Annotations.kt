@@ -20,21 +20,39 @@ import org.jetbrains.kotlin.load.java.structure.*
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.utils.addIfNotNull
 import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 import org.jetbrains.org.objectweb.asm.*
 import java.lang.reflect.Array
 
-internal class AnnotationsCollectorMethodVisitor(
+internal class AnnotationsAndParameterCollectorMethodVisitor(
         private val member: BinaryJavaMethodBase,
         private val context: ClassifierResolutionContext,
         private val signatureParser: BinaryClassSignatureParser,
-        private val parametersToSkipNumber: Int
+        private val parametersToSkipNumber: Int,
+        private val parametersCountInMethodDesc: Int
 ) : MethodVisitor(ASM_API_VERSION_FOR_CLASS_READING) {
-    override fun visitAnnotationDefault(): AnnotationVisitor? {
-        member.safeAs<BinaryJavaMethod>()?.hasAnnotationParameterDefaultValue = true
-        // We don't store default value in Java model
-        return null
+    private var parameterIndex = 0
+
+    private var visibleAnnotableParameterCount = parametersCountInMethodDesc
+    private var invisibleAnnotableParameterCount = parametersCountInMethodDesc
+
+    override fun visitAnnotationDefault(): AnnotationVisitor? =
+        BinaryJavaAnnotationVisitor(context, signatureParser) {
+            member.safeAs<BinaryJavaMethod>()?.annotationParameterDefaultValue = it
+        }
+
+    override fun visitParameter(name: String?, access: Int) {
+        if (name != null) {
+            val index = parameterIndex - parametersToSkipNumber
+            if (index >= 0) {
+                val parameter = member.valueParameters.getOrNull(index) ?: error(
+                    "No parameter with index $parameterIndex-$parametersToSkipNumber (name=$name access=$access) " +
+                            "in method ${member.containingClass.fqName}.${member.name}"
+                )
+                parameter.updateName(Name.identifier(name))
+            }
+        }
+        parameterIndex++
     }
 
     override fun visitAnnotation(desc: String, visible: Boolean) =
@@ -43,8 +61,19 @@ internal class AnnotationsCollectorMethodVisitor(
                     desc, context, signatureParser
             )
 
+    @Suppress("NOTHING_TO_OVERRIDE")
+    override fun visitAnnotableParameterCount(parameterCount: Int, visible: Boolean) {
+        if (visible) {
+            visibleAnnotableParameterCount = parameterCount
+        } else {
+            invisibleAnnotableParameterCount = parameterCount
+        }
+    }
+
     override fun visitParameterAnnotation(parameter: Int, desc: String, visible: Boolean): AnnotationVisitor? {
-        val index = parameter - parametersToSkipNumber
+        val absoluteParameterIndex =
+            parameter + parametersCountInMethodDesc - if (visible) visibleAnnotableParameterCount else invisibleAnnotableParameterCount
+        val index = absoluteParameterIndex - parametersToSkipNumber
         if (index < 0) return null
 
         val annotations =
@@ -127,32 +156,40 @@ class BinaryJavaAnnotation private constructor(
     }
 
     override val classId: ClassId?
-        get() = classifierResolutionResult.classifier.safeAs<JavaClass>()?.classId()
+        get() = classifierResolutionResult.classifier.safeAs<JavaClass>()?.classId
                 ?: ClassId.topLevel(FqName(classifierResolutionResult.qualifiedName))
 
     override fun resolve() = classifierResolutionResult.classifier as? JavaClass
 }
 
 class BinaryJavaAnnotationVisitor(
-        private val context: ClassifierResolutionContext,
-        private val signatureParser: BinaryClassSignatureParser,
-        private val arguments: MutableCollection<JavaAnnotationArgument>
+    private val context: ClassifierResolutionContext,
+    private val signatureParser: BinaryClassSignatureParser,
+    private val sink: (JavaAnnotationArgument) -> Unit
 ) : AnnotationVisitor(ASM_API_VERSION_FOR_CLASS_READING) {
+    constructor(
+        context: ClassifierResolutionContext,
+        signatureParser: BinaryClassSignatureParser,
+        arguments: MutableCollection<JavaAnnotationArgument>
+    ) : this(context, signatureParser, { arguments.add(it) })
+
     private fun addArgument(argument: JavaAnnotationArgument?) {
-        arguments.addIfNotNull(argument)
+        if (argument != null) {
+            sink(argument)
+        }
     }
 
     override fun visitAnnotation(name: String?, desc: String): AnnotationVisitor {
-        val (annotation, visitor) =
-                BinaryJavaAnnotation.createAnnotationAndVisitor(desc, context, signatureParser)
+        val (annotation, visitor) = BinaryJavaAnnotation.createAnnotationAndVisitor(desc, context, signatureParser)
 
-        arguments.add(PlainJavaAnnotationAsAnnotationArgument(name, annotation))
+        sink(PlainJavaAnnotationAsAnnotationArgument(name, annotation))
 
         return visitor
     }
 
     override fun visitEnum(name: String?, desc: String, value: String) {
-         addArgument(PlainJavaEnumValueAnnotationArgument(name, desc, value, context))
+        val enumClassId = context.mapInternalNameToClassId(Type.getType(desc).internalName)
+        addArgument(PlainJavaEnumValueAnnotationArgument(name, enumClassId, value))
     }
 
     override fun visit(name: String?, value: Any?) {
@@ -216,23 +253,8 @@ class PlainJavaAnnotationAsAnnotationArgument(
 
 class PlainJavaEnumValueAnnotationArgument(
         name: String?,
-        private val desc: String,
-        entryName: String,
-        private val context: ClassifierResolutionContext
+        override val enumClassId: ClassId,
+        entryName: String
 ) : PlainJavaAnnotationArgument(name), JavaEnumValueAnnotationArgument {
     override val entryName = Name.identifier(entryName)
-
-    override fun resolve(): JavaField? {
-        val javaClass = context.resolveByInternalName(Type.getType(desc).internalName).classifier as? JavaClass ?: return null
-        return javaClass.fields.singleOrNull { it.name == entryName }
-    }
-}
-
-private fun JavaClass.classId(): ClassId? {
-    val fqName = fqName ?: return null
-    if (outerClass == null) return ClassId.topLevel(fqName)
-
-    val outerClassId = outerClass!!.classId() ?: return null
-
-    return ClassId(outerClassId.packageFqName, outerClassId.relativeClassName.child(name), false)
 }

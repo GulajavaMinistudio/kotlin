@@ -1,18 +1,21 @@
 
-apply { plugin("kotlin") }
-
-jvmTarget = "1.6"
+plugins {
+    kotlin("jvm")
+    id("jps-compatible")
+}
 
 dependencies {
-    compile(project(":core"))
-    compile(ideaSdkCoreDeps(*(rootProject.extra["ideaCoreSdkJars"] as Array<String>)))
-    compile(ideaSdkDeps("jps-model.jar", subdir = "jps"))
+    compile(kotlinStdlib())
+    compile(project(":core:deserialization"))
+    compileOnly(intellijCoreDep()) { includeJars("intellij-core") }
+    compileOnly(intellijDep()) { includeIntellijCoreJarDependencies(project) }
+    compileOnly(intellijDep("jps-standalone")) { includeJars("jps-model") }
 }
 
 sourceSets {
     "main" {
         projectDefault()
-        resources.srcDir(File(rootDir, "resources")).apply { include("**") }
+        resources.srcDir(File(rootDir, "resources"))
     }
     "test" {}
 }

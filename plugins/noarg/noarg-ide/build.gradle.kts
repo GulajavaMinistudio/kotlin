@@ -1,7 +1,10 @@
 
 description = "Kotlin NoArg IDEA Plugin"
 
-apply { plugin("kotlin") }
+plugins {
+    kotlin("jvm")
+    id("jps-compatible")
+}
 
 dependencies {
     compile(project(":kotlin-noarg-compiler-plugin"))
@@ -13,11 +16,10 @@ dependencies {
     compile(project(":idea"))
     compile(project(":idea:idea-jps-common"))
     compile(project(":plugins:annotation-based-compiler-plugins-ide-support"))
-    compile(ideaSdkDeps("openapi", "idea"))
-    compile(ideaPluginDeps("maven", plugin = "maven"))
-    compile(ideaPluginDeps("gradle-tooling-api", "gradle", plugin = "gradle"))
+    compileOnly(intellijDep())
+    excludeInAndroidStudio(rootProject) { compileOnly(intellijPluginDep("maven")) }
+    compileOnly(intellijPluginDep("gradle"))
 }
-
 
 sourceSets {
     "main" { projectDefault() }

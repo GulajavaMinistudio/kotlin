@@ -17,26 +17,39 @@
 package org.jetbrains.uast.kotlin
 
 import com.intellij.psi.PsiElement
+import org.jetbrains.kotlin.asJava.LightClassUtil
+import org.jetbrains.kotlin.asJava.classes.KtLightClassForLocalDeclaration
 import org.jetbrains.kotlin.asJava.toLightGetter
 import org.jetbrains.kotlin.asJava.toLightSetter
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationUseSiteTarget
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.containingClassOrObject
 import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
+import org.jetbrains.kotlin.psi.psiUtil.isPropertyParameter
 import org.jetbrains.kotlin.psi.psiUtil.parentsWithSelf
 import org.jetbrains.uast.*
 import org.jetbrains.uast.kotlin.expressions.KotlinUElvisExpression
+import org.jetbrains.uast.kotlin.internal.KotlinUElementWithComments
 import org.jetbrains.uast.kotlin.psi.UastKotlinPsiVariable
 
-abstract class KotlinAbstractUElement(private val givenParent: UElement?) : UElement {
+abstract class KotlinAbstractUElement(private val givenParent: UElement?) : KotlinUElementWithComments,
+    JvmDeclarationUElementPlaceholder {
 
-    override val uastParent: UElement? by lz {
+    final override val uastParent: UElement? by lz {
         givenParent ?: convertParent()
     }
 
     protected open fun convertParent(): UElement? {
         val psi = psi
         var parent = psi?.parent ?: psi?.containingFile
+
+        if (psi is KtLightClassForLocalDeclaration) {
+            val originParent = psi.kotlinOrigin.parent
+            parent = when (originParent) {
+                is KtClassBody -> originParent.parent
+                else -> originParent
+            }
+        }
 
         if (psi is KtAnnotationEntry) {
             val parentUnwrapped = KotlinConverter.unwrapElements(parent) ?: return null
@@ -51,19 +64,47 @@ abstract class KotlinAbstractUElement(private val givenParent: UElement?) : UEle
                     parent = (parentUnwrapped as? KtProperty)?.setter
                              ?: (parentUnwrapped as? KtParameter)?.toLightSetter()
                              ?: parent
+                AnnotationUseSiteTarget.FIELD ->
+                    parent = (parentUnwrapped as? KtProperty)
+                             ?: (parentUnwrapped as? KtParameter)
+                                     ?.takeIf { it.isPropertyParameter() }
+                                     ?.let(LightClassUtil::getLightClassBackingField)
+                             ?: parent
+                AnnotationUseSiteTarget.SETTER_PARAMETER ->
+                    parent = (parentUnwrapped as? KtParameter)
+                                     ?.toLightSetter()?.parameterList?.parameters?.firstOrNull() ?: parent
             }
         }
         if (psi is UastKotlinPsiVariable && parent != null) {
             parent = parent.parent
         }
 
-        if (parent is KtStringTemplateEntryWithExpression) {
+        while (parent is KtStringTemplateEntryWithExpression ||
+               parent is KtStringTemplateExpression && parent.entries.size == 1) {
             parent = parent.parent
         }
-        if ((parent is KtStringTemplateExpression && parent.entries.size == 1)) {
-            parent = parent.parent
-        }
+
         if (parent is KtWhenConditionWithExpression) {
+            parent = parent.parent
+        }
+
+        if (parent is KtImportList) {
+            parent = parent.parent
+        }
+
+        if (psi is KtFunctionLiteral && parent is KtLambdaExpression) {
+            parent = parent.parent
+        }
+
+        if (parent is KtLambdaArgument) {
+            parent = parent.parent
+        }
+
+        if (psi is KtSuperTypeCallEntry) {
+            parent = parent?.parent
+        }
+
+        if (parent is KtPropertyDelegate) {
             parent = parent.parent
         }
 
@@ -104,7 +145,7 @@ fun doConvertParent(element: UElement, parent: PsiElement?): UElement? {
         val containingClass = parent.containingClassOrObject
         if (containingClass != null) {
             val containingUClass = KotlinUastLanguagePlugin().convertElementWithParent(containingClass, null) as? KotlinUClass
-            containingUClass?.methods?.filterIsInstance<KotlinPrimaryConstructorUMethod>()?.firstOrNull()?.let {
+            containingUClass?.methods?.filterIsInstance<KotlinConstructorUMethod>()?.firstOrNull { it.isPrimary }?.let {
                 return it.uastBody
             }
         }
@@ -112,8 +153,18 @@ fun doConvertParent(element: UElement, parent: PsiElement?): UElement? {
 
     val result = KotlinUastLanguagePlugin().convertElementWithParent(parentUnwrapped, null)
 
+    if (result is KotlinUBlockExpression && element is UClass) {
+        return KotlinUDeclarationsExpression(result).apply {
+            declarations = listOf(element)
+        }
+    }
+
     if (result is UEnumConstant && element is UDeclaration) {
         return result.initializingClass
+    }
+
+    if (result is UCallExpression && result.uastParent is UEnumConstant) {
+        return result.uastParent
     }
 
     if (result is USwitchClauseExpressionWithBody && !isInConditionBranch(element, result)) {
@@ -132,6 +183,17 @@ fun doConvertParent(element: UElement, parent: PsiElement?): UElement? {
         }
     }
 
+    if (result is UMethod
+        && result !is KotlinConstructorUMethod // no sense to wrap super calls with `return`
+        && element is UExpression
+        && element !is UBlockExpression
+        && element !is UTypeReferenceExpression // when element is a type in extension methods
+    ) {
+        return KotlinUBlockExpression.KotlinLazyUBlockExpression(result, { block ->
+            listOf(KotlinUImplicitReturnExpression(block).apply { returnExpression = element })
+        }).expressions.single()
+    }
+
     return result
 }
 
@@ -148,8 +210,15 @@ private fun findAnnotationClassFromConstructorParameter(parameter: KtParameter):
     return null
 }
 
-abstract class KotlinAbstractUExpression(givenParent: UElement?)
-    : KotlinAbstractUElement(givenParent), UExpression {
+abstract class KotlinAbstractUExpression(givenParent: UElement?) :
+    KotlinAbstractUElement(givenParent),
+    UExpression,
+    JvmDeclarationUElementPlaceholder {
+
+    override val javaPsi: PsiElement? = null
+
+    override val sourcePsi
+        get() = psi
 
     override val annotations: List<UAnnotation>
         get() {

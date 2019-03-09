@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,10 @@ import org.jetbrains.kotlin.renderer.DescriptorRenderer
 import org.jetbrains.kotlin.renderer.DescriptorRendererOptions
 import org.jetbrains.kotlin.resolve.scopes.MemberScope
 import org.jetbrains.kotlin.types.checker.StrictEqualityTypeChecker
+import org.jetbrains.kotlin.types.model.FlexibleTypeMarker
+import org.jetbrains.kotlin.types.model.KotlinTypeMarker
+import org.jetbrains.kotlin.types.model.SimpleTypeMarker
+import org.jetbrains.kotlin.types.model.TypeArgumentListMarker
 
 /**
  * [KotlinType] has only two direct subclasses: [WrappedType] and [UnwrappedType].
@@ -40,7 +44,7 @@ import org.jetbrains.kotlin.types.checker.StrictEqualityTypeChecker
  *
  * For type creation see [KotlinTypeFactory].
  */
-sealed class KotlinType : Annotated {
+sealed class KotlinType : Annotated, KotlinTypeMarker {
 
     abstract val constructor: TypeConstructor
     abstract val arguments: List<TypeProjection>
@@ -65,6 +69,8 @@ sealed class KotlinType : Annotated {
         return isMarkedNullable == other.isMarkedNullable && StrictEqualityTypeChecker.strictEqualTypes(unwrap(), other.unwrap())
     }
 }
+
+fun KotlinType.isNullable(): Boolean = TypeUtils.isNullableType(this)
 
 abstract class WrappedType : KotlinType() {
     open fun isComputed(): Boolean = true
@@ -117,14 +123,14 @@ sealed class UnwrappedType: KotlinType() {
  * then all your types are simple.
  * Or more precisely, all instances are subclasses of [SimpleType] or [WrappedType] (which contains [SimpleType] inside).
  */
-abstract class SimpleType : UnwrappedType() {
+abstract class SimpleType : UnwrappedType(), SimpleTypeMarker, TypeArgumentListMarker {
     abstract override fun replaceAnnotations(newAnnotations: Annotations): SimpleType
     abstract override fun makeNullableAsSpecified(newNullability: Boolean): SimpleType
 
     override fun toString(): String {
         return buildString {
-            for ((annotation, target) in annotations.getAllAnnotations()) {
-                append("[", DescriptorRenderer.DEBUG_TEXT.renderAnnotation(annotation, target), "] ")
+            for (annotation in annotations) {
+                append("[", DescriptorRenderer.DEBUG_TEXT.renderAnnotation(annotation), "] ")
             }
 
             append(constructor)
@@ -136,7 +142,7 @@ abstract class SimpleType : UnwrappedType() {
 
 // lowerBound is a subtype of upperBound
 abstract class FlexibleType(val lowerBound: SimpleType, val upperBound: SimpleType) :
-        UnwrappedType(), SubtypingRepresentatives {
+        UnwrappedType(), SubtypingRepresentatives, FlexibleTypeMarker {
 
     abstract val delegate: SimpleType
 

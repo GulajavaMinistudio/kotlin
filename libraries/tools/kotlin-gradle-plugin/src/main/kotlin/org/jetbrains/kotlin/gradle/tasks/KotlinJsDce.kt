@@ -17,24 +17,44 @@
 package org.jetbrains.kotlin.gradle.tasks
 
 import org.gradle.api.Project
+import org.gradle.api.file.FileCollection
+import org.gradle.api.file.FileTree
+import org.gradle.api.tasks.CacheableTask
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.TaskAction
 import org.jetbrains.kotlin.cli.common.arguments.K2JSDceArguments
 import org.jetbrains.kotlin.cli.js.dce.K2JSDce
-import org.jetbrains.kotlin.compilerRunner.ArgumentUtils
-import org.jetbrains.kotlin.compilerRunner.GradleKotlinLogger
-import org.jetbrains.kotlin.compilerRunner.createLoggingMessageCollector
+import org.jetbrains.kotlin.gradle.logging.GradleKotlinLogger
 import org.jetbrains.kotlin.compilerRunner.runToolInSeparateProcess
 import org.jetbrains.kotlin.gradle.dsl.KotlinJsDce
 import org.jetbrains.kotlin.gradle.dsl.KotlinJsDceOptions
 import org.jetbrains.kotlin.gradle.dsl.KotlinJsDceOptionsImpl
 import java.io.File
 
-open class KotlinJsDce : AbstractKotlinCompileTool<K2JSDceArguments>(), KotlinJsDce {
+@CacheableTask
+ open class KotlinJsDce : AbstractKotlinCompileTool<K2JSDceArguments>(), KotlinJsDce {
+
+    init {
+        cacheOnlyIfEnabledForKotlin()
+    }
+
+    override fun localStateDirectories(): FileCollection = project.files()
+
+    override fun createCompilerArgs(): K2JSDceArguments = K2JSDceArguments()
+
+    override fun setupCompilerArgs(args: K2JSDceArguments, defaultsOnly: Boolean) {
+        dceOptionsImpl.updateArguments(args)
+        args.declarationsToKeep = keep.toTypedArray()
+    }
+
     private val dceOptionsImpl = KotlinJsDceOptionsImpl()
 
+    @get:Internal
     override val dceOptions: KotlinJsDceOptions
         get() = dceOptionsImpl
 
+    @get:Input
     override val keep: MutableList<String> = mutableListOf()
 
     override fun findKotlinCompilerClasspath(project: Project): List<File> = findKotlinJsDceClasspath(project)
@@ -47,19 +67,20 @@ open class KotlinJsDce : AbstractKotlinCompileTool<K2JSDceArguments>(), KotlinJs
 
     @TaskAction
     fun performDce() {
-        val inputFiles = getSource().files.map { it.path }
+        val inputFiles = (listOf(getSource()) + classpath.map { project.fileTree(it) })
+            .reduce(FileTree::plus)
+            .files.map { it.path }
 
         val outputDirArgs = arrayOf("-output-dir", destinationDir.path)
 
-        val args = K2JSDceArguments()
-        dceOptionsImpl.updateArguments(args)
-        args.declarationsToKeep = keep.toTypedArray()
-        val argsArray = ArgumentUtils.convertArgumentsToStringList(args).toTypedArray()
+        val argsArray = serializedCompilerArguments.toTypedArray()
 
-        val log = GradleKotlinLogger(project.logger)
+        val log = GradleKotlinLogger(logger)
         val allArgs = argsArray + outputDirArgs + inputFiles
-        val exitCode = runToolInSeparateProcess(allArgs, K2JSDce::class.java.name, computedCompilerClasspath,
-                log, createLoggingMessageCollector(log))
+        val exitCode = runToolInSeparateProcess(
+            allArgs, K2JSDce::class.java.name, computedCompilerClasspath,
+            log
+        )
         throwGradleExceptionIfError(exitCode)
     }
 }

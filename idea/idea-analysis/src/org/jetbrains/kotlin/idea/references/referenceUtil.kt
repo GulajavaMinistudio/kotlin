@@ -24,6 +24,7 @@ import org.jetbrains.kotlin.descriptors.DeclarationDescriptorWithSource
 import org.jetbrains.kotlin.descriptors.PropertyDescriptor
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.caches.resolve.resolveImportReference
+import org.jetbrains.kotlin.idea.caches.resolve.resolveToCall
 import org.jetbrains.kotlin.idea.imports.canBeReferencedViaImport
 import org.jetbrains.kotlin.idea.intentions.OperatorToFunctionIntention
 import org.jetbrains.kotlin.idea.kdoc.KDocReference
@@ -69,7 +70,7 @@ val PsiReference.unwrappedTargets: Set<PsiElement>
 fun PsiReference.canBeReferenceTo(candidateTarget: PsiElement): Boolean {
     // optimization
     return element.containingFile == candidateTarget.containingFile
-           || ProjectRootsUtil.isInProjectOrLibSource(element)
+            || ProjectRootsUtil.isInProjectOrLibSource(element, includeScriptsOutsideSourceRoots = true)
 }
 
 fun PsiReference.matchesTarget(candidateTarget: PsiElement): Boolean {
@@ -178,10 +179,13 @@ fun KtSimpleNameReference.canBePsiMethodReference(): Boolean {
 }
 
 private fun PsiElement.isConstructorOf(unwrappedCandidate: PsiElement) =
-    // call to Java constructor
-        (this is PsiMethod && isConstructor && containingClass == unwrappedCandidate) ||
+    when {
+        // call to Java constructor
+        this is PsiMethod && isConstructor && containingClass == unwrappedCandidate -> true
         // call to Kotlin constructor
-    (this is KtConstructor<*> && getContainingClassOrObject() == unwrappedCandidate)
+        this is KtConstructor<*> && getContainingClassOrObject().isEquivalentTo(unwrappedCandidate) -> true
+        else -> false
+    }
 
 fun AbstractKtReference<out KtExpression>.renameImplicitConventionalCall(newName: String?): KtExpression {
     if (newName == null) return expression
@@ -220,7 +224,9 @@ enum class ReferenceAccess(val isRead: Boolean, val isWrite: Boolean) {
     READ(true, false), WRITE(false, true), READ_WRITE(true, true)
 }
 
-fun KtExpression.readWriteAccess(useResolveForReadWrite: Boolean): ReferenceAccess {
+fun KtExpression.readWriteAccess(useResolveForReadWrite: Boolean) = readWriteAccessWithFullExpression(useResolveForReadWrite).first
+
+fun KtExpression.readWriteAccessWithFullExpression(useResolveForReadWrite: Boolean): Pair<ReferenceAccess, KtExpression> {
     var expression = getQualifiedExpressionForSelectorOrThis()
     loop@ while (true) {
         val parent = expression.parent
@@ -233,49 +239,49 @@ fun KtExpression.readWriteAccess(useResolveForReadWrite: Boolean): ReferenceAcce
     val assignment = expression.getAssignmentByLHS()
     if (assignment != null) {
         when (assignment.operationToken) {
-            KtTokens.EQ -> return ReferenceAccess.WRITE
+            KtTokens.EQ -> return ReferenceAccess.WRITE to assignment
 
             else -> {
-                if (!useResolveForReadWrite) return ReferenceAccess.READ_WRITE
+                if (!useResolveForReadWrite) return ReferenceAccess.READ_WRITE to assignment
 
-                val bindingContext = assignment.analyze(BodyResolveMode.PARTIAL)
-                val resolvedCall = assignment.getResolvedCall(bindingContext) ?: return ReferenceAccess.READ_WRITE
-                if (!resolvedCall.isReallySuccess()) return ReferenceAccess.READ_WRITE
+                val resolvedCall = assignment.resolveToCall() ?: return ReferenceAccess.READ_WRITE to assignment
+                if (!resolvedCall.isReallySuccess()) return ReferenceAccess.READ_WRITE to assignment
                 return if (resolvedCall.resultingDescriptor.name in OperatorConventions.ASSIGNMENT_OPERATIONS.values)
-                    ReferenceAccess.READ
+                    ReferenceAccess.READ to assignment
                 else
-                    ReferenceAccess.READ_WRITE
+                    ReferenceAccess.READ_WRITE to assignment
             }
         }
     }
 
-    return if ((expression.parent as? KtUnaryExpression)?.operationToken in constant { setOf(KtTokens.PLUSPLUS, KtTokens.MINUSMINUS) })
-        ReferenceAccess.READ_WRITE
+    val unaryExpression = expression.parent as? KtUnaryExpression
+    return if (unaryExpression != null && unaryExpression.operationToken in constant { setOf(KtTokens.PLUSPLUS, KtTokens.MINUSMINUS) })
+        ReferenceAccess.READ_WRITE to unaryExpression
     else
-        ReferenceAccess.READ
+        ReferenceAccess.READ to expression
 }
 
 fun KtReference.canBeResolvedViaImport(target: DeclarationDescriptor, bindingContext: BindingContext): Boolean {
-    if (!target.canBeReferencedViaImport()) return false
-
     if (this is KDocReference) return element.getQualifiedName().size == 1
+    return element.canBeResolvedViaImport(target, bindingContext)
+}
 
+fun KtElement.canBeResolvedViaImport(target: DeclarationDescriptor, bindingContext: BindingContext): Boolean {
+    if (!target.canBeReferencedViaImport()) return false
     if (target.isExtension) return true // assume that any type of reference can use imports when resolved to extension
+    if (this !is KtNameReferenceExpression) return false
 
-    val referenceExpression = this.element as? KtNameReferenceExpression ?: return false
-    val callTypeAndReceiver = CallTypeAndReceiver.detect(referenceExpression)
-
+    val callTypeAndReceiver = CallTypeAndReceiver.detect(this)
     if (callTypeAndReceiver.receiver != null) {
         if (target !is PropertyDescriptor || !target.type.isExtensionFunctionType) return false
         if (callTypeAndReceiver !is CallTypeAndReceiver.DOT && callTypeAndReceiver !is CallTypeAndReceiver.SAFE) return false
 
-        val resolvedCall = bindingContext[BindingContext.CALL, referenceExpression].getResolvedCall(bindingContext)
-                                   as? VariableAsFunctionResolvedCall ?: return false
+        val resolvedCall = bindingContext[BindingContext.CALL, this].getResolvedCall(bindingContext)
+                as? VariableAsFunctionResolvedCall ?: return false
         if (resolvedCall.variableCall.explicitReceiverKind.isDispatchReceiver) return false
     }
 
-    if (element.parent is KtThisExpression || element.parent is KtSuperExpression) return false // TODO: it's a bad design of PSI tree, we should change it
-
+    if (parent is KtThisExpression || parent is KtSuperExpression) return false // TODO: it's a bad design of PSI tree, we should change it
     return true
 }
 

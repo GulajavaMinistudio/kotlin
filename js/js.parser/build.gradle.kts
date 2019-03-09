@@ -1,11 +1,13 @@
 
-apply { plugin("kotlin") }
+plugins {
+    kotlin("jvm")
+    id("jps-compatible")
+}
 
 dependencies {
     compile(project(":compiler:util"))
     compile(project(":js:js.ast"))
-    compile(ideaSdkCoreDeps("intellij-core"))
-    compile(preloadedDeps("json-org"))
+    compileOnly(intellijCoreDep()) { includeJars("intellij-core") }
 }
 
 sourceSets {

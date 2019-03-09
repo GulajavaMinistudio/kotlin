@@ -18,6 +18,7 @@ package org.jetbrains.kotlin.daemon.common
 
 import java.io.File
 import java.io.Serializable
+import java.util.*
 
 open class CompilationOptions(
         val compilerMode: CompilerMode,
@@ -32,26 +33,61 @@ open class CompilationOptions(
     companion object {
         const val serialVersionUID: Long = 0
     }
+
+    override fun toString(): String {
+        return "CompilationOptions(" +
+               "compilerMode=$compilerMode, " +
+               "targetPlatform=$targetPlatform, " +
+               "reportCategories=${Arrays.toString(reportCategories)}, " +
+               "reportSeverity=$reportSeverity, " +
+               "requestedCompilationResults=${Arrays.toString(requestedCompilationResults)}" +
+               ")"
+    }
 }
 
 class IncrementalCompilationOptions(
-        val areFileChangesKnown: Boolean,
-        val modifiedFiles: List<File>?,
-        val deletedFiles: List<File>?,
-        val workingDir: File,
-        val customCacheVersionFileName: String,
-        val customCacheVersion: Int,
-        compilerMode: CompilerMode,
-        targetPlatform: CompileService.TargetPlatform,
-        /** @See [ReportCategory] */
+    val areFileChangesKnown: Boolean,
+    val modifiedFiles: List<File>?,
+    val deletedFiles: List<File>?,
+    val workingDir: File,
+    compilerMode: CompilerMode,
+    targetPlatform: CompileService.TargetPlatform,
+    /** @See [ReportCategory] */
         reportCategories: Array<Int>,
-        /** @See [ReportSeverity] */
+    /** @See [ReportSeverity] */
         reportSeverity: Int,
-        /** @See [CompilationResultCategory]] */
+    /** @See [CompilationResultCategory]] */
         requestedCompilationResults: Array<Int>,
-        val resultDifferenceFile: File? = null,
-        val friendDifferenceFile: File? = null
+    val usePreciseJavaTracking: Boolean,
+    /**
+         * Directories that should be cleared when IC decides to rebuild
+         */
+        val outputFiles: List<File>,
+    val multiModuleICSettings: MultiModuleICSettings,
+    val modulesInfo: IncrementalModuleInfo
 ) : CompilationOptions(compilerMode, targetPlatform, reportCategories, reportSeverity, requestedCompilationResults) {
+    companion object {
+        const val serialVersionUID: Long = 0
+    }
+
+    override fun toString(): String {
+        return "IncrementalCompilationOptions(" +
+               "super=${super.toString()}, " +
+               "areFileChangesKnown=$areFileChangesKnown, " +
+               "modifiedFiles=$modifiedFiles, " +
+               "deletedFiles=$deletedFiles, " +
+               "workingDir=$workingDir, " +
+               "multiModuleICSettings=$multiModuleICSettings, " +
+               "usePreciseJavaTracking=$usePreciseJavaTracking" +
+               "outputFiles=$outputFiles" +
+               ")"
+    }
+}
+
+data class MultiModuleICSettings(
+    val buildHistoryFile: File,
+    val useModuleDetection: Boolean
+) : Serializable {
     companion object {
         const val serialVersionUID: Long = 0
     }

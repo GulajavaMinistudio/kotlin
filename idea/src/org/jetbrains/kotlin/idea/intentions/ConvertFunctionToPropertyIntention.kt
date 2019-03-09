@@ -27,11 +27,10 @@ import com.intellij.psi.PsiNamedElement
 import com.intellij.psi.PsiReference
 import com.intellij.psi.search.searches.ReferencesSearch
 import com.intellij.util.containers.MultiMap
-import org.jetbrains.kotlin.asJava.namedUnwrappedElement
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.descriptors.CallableDescriptor
 import org.jetbrains.kotlin.descriptors.FunctionDescriptor
-import org.jetbrains.kotlin.idea.caches.resolve.analyze
+import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptorIfAny
 import org.jetbrains.kotlin.idea.caches.resolve.unsafeResolveToDescriptor
 import org.jetbrains.kotlin.idea.codeInsight.DescriptorToSourceUtilsIde
 import org.jetbrains.kotlin.idea.core.ShortenReferences
@@ -46,11 +45,7 @@ import org.jetbrains.kotlin.load.java.JvmAbi
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.KtPsiFactory.CallableBuilder.Target.READ_ONLY_PROPERTY
-import org.jetbrains.kotlin.psi.psiUtil.endOffset
-import org.jetbrains.kotlin.psi.psiUtil.getParentOfTypeAndBranch
-import org.jetbrains.kotlin.psi.psiUtil.getStartOffsetIn
-import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
-import org.jetbrains.kotlin.resolve.BindingContext
+import org.jetbrains.kotlin.psi.psiUtil.*
 import org.jetbrains.kotlin.resolve.descriptorUtil.builtIns
 import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
 import org.jetbrains.kotlin.resolve.scopes.utils.findVariable
@@ -60,13 +55,15 @@ import org.jetbrains.kotlin.types.isError
 import org.jetbrains.kotlin.types.typeUtil.supertypes
 import java.util.*
 
-class ConvertFunctionToPropertyIntention : SelfTargetingIntention<KtNamedFunction>(KtNamedFunction::class.java, "Convert function to property"), LowPriorityAction {
+class ConvertFunctionToPropertyIntention :
+    SelfTargetingIntention<KtNamedFunction>(KtNamedFunction::class.java, "Convert function to property"), LowPriorityAction {
     private var KtNamedFunction.typeFqNameToAdd: String? by UserDataProperty(Key.create("TYPE_FQ_NAME_TO_ADD"))
 
     private inner class Converter(
-            project: Project,
-            private val editor: Editor?,
-            descriptor: FunctionDescriptor
+        project: Project,
+        private val file: KtFile,
+        private val editor: Editor?,
+        descriptor: FunctionDescriptor
     ) : CallableRefactoring<FunctionDescriptor>(project, descriptor, text) {
         private val elementsToShorten = ArrayList<KtElement>()
 
@@ -75,7 +72,7 @@ class ConvertFunctionToPropertyIntention : SelfTargetingIntention<KtNamedFunctio
             (SyntheticJavaPropertyDescriptor.propertyNameByGetMethodName(name) ?: name).asString()
         }
 
-        private fun convertFunction(originalFunction: KtNamedFunction, psiFactory: KtPsiFactory) {
+        private fun convertFunction(originalFunction: KtNamedFunction, psiFactory: KtPsiFactory, moveCaret: Boolean) {
             val propertyString = KtPsiFactory.CallableBuilder(READ_ONLY_PROPERTY).apply {
                 // make sure to capture all comments and line breaks
                 modifier(originalFunction.text.substring(0, originalFunction.funKeyword!!.getStartOffsetIn(originalFunction)))
@@ -87,9 +84,8 @@ class ConvertFunctionToPropertyIntention : SelfTargetingIntention<KtNamedFunctio
 
                 if (originalFunction.equalsToken != null) {
                     getterExpression(originalFunction.bodyExpression!!.text, breakLine = originalFunction.typeReference != null)
-                }
-                else {
-                    (originalFunction.bodyExpression as? KtBlockExpression)?.let { body ->
+                } else {
+                    originalFunction.bodyBlockExpression?.let { body ->
                         transform {
                             append("\nget() ")
                             append(body.text)
@@ -99,14 +95,14 @@ class ConvertFunctionToPropertyIntention : SelfTargetingIntention<KtNamedFunctio
             }.asString()
 
             val replaced = originalFunction.replaced(psiFactory.createDeclaration<KtProperty>(propertyString))
-
-            editor?.caretModel?.moveToOffset(replaced.nameIdentifier!!.endOffset)
+            if (editor != null && moveCaret) editor.caretModel.moveToOffset(replaced.nameIdentifier!!.endOffset)
         }
 
         override fun performRefactoring(descriptorsForChange: Collection<CallableDescriptor>) {
             val conflicts = MultiMap<PsiElement, String>()
             val getterName = JvmAbi.getterName(callableDescriptor.name.asString())
             val callables = getAffectedCallables(project, descriptorsForChange)
+            val mainElement = findMainElement(callables)
             val kotlinCalls = ArrayList<KtCallElement>()
             val kotlinRefsToRename = ArrayList<PsiReference>()
             val foreignRefs = ArrayList<PsiReference>()
@@ -122,26 +118,20 @@ class ConvertFunctionToPropertyIntention : SelfTargetingIntention<KtNamedFunctio
                         val functionDescriptor = callable.unsafeResolveToDescriptor(BodyResolveMode.PARTIAL) as FunctionDescriptor
                         val type = functionDescriptor.returnType
                         val typeToInsert = when {
-                                               type == null || type.isError -> null
-                                               type.constructor.isDenotable -> type
-                                               else -> type.supertypes().firstOrNull { it.constructor.isDenotable }
-                                           } ?: functionDescriptor.builtIns.nullableAnyType
+                            type == null || type.isError -> null
+                            type.constructor.isDenotable -> type
+                            else -> type.supertypes().firstOrNull { it.constructor.isDenotable }
+                        } ?: functionDescriptor.builtIns.nullableAnyType
                         callable.typeFqNameToAdd = IdeDescriptorRenderers.SOURCE_CODE.renderType(typeToInsert)
                     }
 
                     callableDescriptor.getContainingScope()
-                            ?.findVariable(callableDescriptor.name, NoLookupLocation.FROM_IDE)
-                            ?.let { DescriptorToSourceUtilsIde.getAnyDeclaration(project, it) }
-                            ?.let { reportDeclarationConflict(conflicts, it) { "$it already exists" } }
+                        ?.findVariable(callableDescriptor.name, NoLookupLocation.FROM_IDE)
+                        ?.let { DescriptorToSourceUtilsIde.getAnyDeclaration(project, it) }
+                        ?.let { reportDeclarationConflict(conflicts, it) { s -> "$s already exists" } }
                 }
 
-                if (callable is PsiMethod) {
-                    callable.containingClass
-                            ?.findMethodsByName(getterName, true)
-                            // as is necessary here: see KT-10386
-                            ?.firstOrNull { it.parameterList.parametersCount == 0 && !callables.contains(it.namedUnwrappedElement as PsiElement?) }
-                            ?.let { reportDeclarationConflict(conflicts, it) { "$it already exists" } }
-                }
+                if (callable is PsiMethod) callable.checkDeclarationConflict(getterName, conflicts, callables)
 
                 val usages = ReferencesSearch.search(callable)
                 for (usage in usages) {
@@ -151,26 +141,24 @@ class ConvertFunctionToPropertyIntention : SelfTargetingIntention<KtNamedFunctio
                         if (callElement != null && expression.getStrictParentOfType<KtCallableReferenceExpression>() == null) {
                             if (callElement.typeArguments.isNotEmpty()) {
                                 conflicts.putValue(
-                                        callElement,
-                                        "Type arguments will be lost after conversion: ${StringUtil.htmlEmphasize(callElement.text)}"
+                                    callElement,
+                                    "Type arguments will be lost after conversion: ${StringUtil.htmlEmphasize(callElement.text)}"
                                 )
                             }
 
                             if (callElement.valueArguments.isNotEmpty()) {
                                 conflicts.putValue(
-                                        callElement,
-                                        "Call with arguments will be skipped: ${StringUtil.htmlEmphasize(callElement.text)}"
+                                    callElement,
+                                    "Call with arguments will be skipped: ${StringUtil.htmlEmphasize(callElement.text)}"
                                 )
                                 continue
                             }
 
                             kotlinCalls.add(callElement)
-                        }
-                        else {
+                        } else {
                             kotlinRefsToRename.add(usage)
                         }
-                    }
-                    else {
+                    } else {
                         foreignRefs.add(usage)
                     }
                 }
@@ -187,7 +175,7 @@ class ConvertFunctionToPropertyIntention : SelfTargetingIntention<KtNamedFunctio
                     foreignRefs.forEach { it.handleElementRename(newGetterName) }
                     callables.forEach {
                         when (it) {
-                            is KtNamedFunction -> convertFunction(it, psiFactory)
+                            is KtNamedFunction -> convertFunction(it, psiFactory, moveCaret = it == mainElement)
                             is PsiMethod -> it.name = newGetterName
                         }
                     }
@@ -195,6 +183,12 @@ class ConvertFunctionToPropertyIntention : SelfTargetingIntention<KtNamedFunctio
                     ShortenReferences.DEFAULT.process(elementsToShorten)
                 }
             }
+        }
+
+        private fun findMainElement(callables: List<PsiElement>): PsiElement? {
+            if (editor == null) return null
+            val offset = editor.caretModel.offset
+            return callables.find { file == it.containingFile && offset in it.textRange }
         }
     }
 
@@ -211,15 +205,13 @@ class ConvertFunctionToPropertyIntention : SelfTargetingIntention<KtNamedFunctio
             return false
         }
 
-        val descriptor = element.analyze(BodyResolveMode.PARTIAL)[BindingContext.DECLARATION_TO_DESCRIPTOR, element] as? FunctionDescriptor
-                         ?: return false
+        val descriptor = element.resolveToDescriptorIfAny() ?: return false
         val returnType = descriptor.returnType ?: return false
         return !KotlinBuiltIns.isUnit(returnType) && !KotlinBuiltIns.isNothing(returnType)
     }
 
     override fun applyTo(element: KtNamedFunction, editor: Editor?) {
-        val context = element.analyze(BodyResolveMode.PARTIAL)
-        val descriptor = context[BindingContext.DECLARATION_TO_DESCRIPTOR, element] as FunctionDescriptor
-        Converter(element.project, editor, descriptor).run()
+        val descriptor = element.unsafeResolveToDescriptor(BodyResolveMode.PARTIAL) as FunctionDescriptor
+        Converter(element.project, element.containingKtFile, editor, descriptor).run()
     }
 }

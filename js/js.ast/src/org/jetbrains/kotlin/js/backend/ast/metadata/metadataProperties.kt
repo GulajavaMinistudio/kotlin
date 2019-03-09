@@ -30,11 +30,13 @@ var JsName.staticRef: JsNode? by MetadataProperty(default = null)
 
 var JsName.descriptor: DeclarationDescriptor? by MetadataProperty(default = null)
 
-var JsName.localAlias: JsName? by MetadataProperty(default = null)
+var JsName.localAlias: LocalAlias? by MetadataProperty(default = null)
+
+data class LocalAlias(val name: JsName, val tag: String?)
 
 var JsName.specialFunction: SpecialFunction? by MetadataProperty(default = null)
 
-var JsExpression.localAlias: JsName? by MetadataProperty(default = null)
+var JsExpression.localAlias: JsImportedModule? by MetadataProperty(default = null)
 
 // TODO: move this to module 'js.inliner' and change dependency on 'frontend' to dependency on 'descriptors'
 var JsInvocation.inlineStrategy: InlineStrategy? by MetadataProperty(default = null)
@@ -46,6 +48,8 @@ var JsInvocation.callableReferenceReceiver: JsExpression? by MetadataProperty(de
 var JsInvocation.descriptor: CallableDescriptor? by MetadataProperty(default = null)
 
 var JsInvocation.psiElement: PsiElement? by MetadataProperty(default = null)
+
+var JsNameRef.isJsCall: Boolean by MetadataProperty(default = false)
 
 var JsNameRef.inlineStrategy: InlineStrategy? by MetadataProperty(default = null)
 
@@ -96,8 +100,6 @@ var HasMetadata.sideEffects: SideEffectKind by MetadataProperty(default = SideEf
  */
 var JsExpression.isSuspend: Boolean by MetadataProperty(default = false)
 
-var JsExpression.isTailCallSuspend: Boolean by MetadataProperty(default = false)
-
 /**
  * Denotes a reference to coroutine's `result` field that contains result of
  * last suspended invocation.
@@ -115,9 +117,15 @@ var JsNameRef.coroutineController by MetadataProperty(default = false)
  */
 var JsNameRef.coroutineReceiver by MetadataProperty(default = false)
 
+var JsFunction.forceStateMachine by MetadataProperty(default = false)
+
+var JsFunction.isInlineableCoroutineBody by MetadataProperty(default = false)
+
 var JsName.imported by MetadataProperty(default = false)
 
 var JsFunction.coroutineMetadata: CoroutineMetadata? by MetadataProperty(default = null)
+
+var JsExpression.range: Pair<RangeType, RangeKind>? by MetadataProperty(default = null)
 
 data class CoroutineMetadata(
         val doResumeName: JsName,
@@ -154,11 +162,22 @@ enum class SpecialFunction(val suggestedName: String) {
     SUSPEND_CALL("suspendCall"),
     COROUTINE_RESULT("coroutineResult"),
     COROUTINE_CONTROLLER("coroutineController"),
-    COROUTINE_RECEIVER("coroutineReceiver")
+    COROUTINE_RECEIVER("coroutineReceiver"),
+    SET_COROUTINE_RESULT("setCoroutineResult")
 }
 
 enum class BoxingKind {
     NONE,
     BOXING,
     UNBOXING
+}
+
+enum class RangeType {
+    INT,
+    LONG
+}
+
+enum class RangeKind {
+    RANGE_TO,
+    UNTIL
 }

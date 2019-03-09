@@ -1,15 +1,30 @@
+plugins {
+    kotlin("jvm")
+}
 
-apply { plugin("kotlin") }
+apply { plugin("jps-compatible") }
 
 dependencies {
     compile(project(":compiler:util"))
-    compile(ideaSdkCoreDeps("intellij-core"))
-    compile(ideaPluginDeps("gradle-tooling-api", plugin = "gradle"))
-    compile(ideaPluginDeps("android", "android-common", "sdk-common", plugin = "android"))
+    compileOnly(intellijCoreDep()) { includeJars("intellij-core") }
+    compileOnly(intellijDep())
+    compileOnly(intellijPluginDep("gradle"))
+    compileOnly(intellijPluginDep("android"))
 }
 
 sourceSets {
-    "main" { projectDefault() }
+    if (Ide.IJ() && Platform[183].orLower()) {
+        "main" {
+            projectDefault()
+        }
+    } else {
+        "main" {}
+    }
     "test" {}
 }
 
+runtimeJar {
+    archiveName = "android-output-parser-ide.jar"
+}
+
+ideaPlugin()

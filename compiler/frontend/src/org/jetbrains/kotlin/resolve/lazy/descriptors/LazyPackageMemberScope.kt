@@ -27,23 +27,31 @@ import org.jetbrains.kotlin.resolve.lazy.declarations.PackageMemberDeclarationPr
 import org.jetbrains.kotlin.resolve.scopes.DescriptorKindFilter
 
 class LazyPackageMemberScope(
-        private val resolveSession: ResolveSession,
-        declarationProvider: PackageMemberDeclarationProvider,
-        thisPackage: PackageFragmentDescriptor)
-: AbstractLazyMemberScope<PackageFragmentDescriptor, PackageMemberDeclarationProvider>(resolveSession, declarationProvider, thisPackage, resolveSession.trace) {
+    private val resolveSession: ResolveSession,
+    declarationProvider: PackageMemberDeclarationProvider,
+    thisPackage: PackageFragmentDescriptor
+) : AbstractLazyMemberScope<PackageFragmentDescriptor, PackageMemberDeclarationProvider>(
+    resolveSession,
+    declarationProvider,
+    thisPackage,
+    resolveSession.trace
+) {
 
-    override fun getContributedDescriptors(kindFilter: DescriptorKindFilter, nameFilter: (Name) -> Boolean): Collection<DeclarationDescriptor> {
+    override fun getContributedDescriptors(
+        kindFilter: DescriptorKindFilter,
+        nameFilter: (Name) -> Boolean
+    ): Collection<DeclarationDescriptor> {
         return computeDescriptorsFromDeclaredElements(kindFilter, nameFilter, NoLookupLocation.WHEN_GET_ALL_DESCRIPTORS)
     }
 
     override fun getScopeForMemberDeclarationResolution(declaration: KtDeclaration) =
-            resolveSession.fileScopeProvider.getFileResolutionScope(declaration.containingKtFile)
+        resolveSession.fileScopeProvider.getFileResolutionScope(declaration.containingKtFile)
 
     override fun getScopeForInitializerResolution(declaration: KtDeclaration) =
-            getScopeForMemberDeclarationResolution(declaration)
+        getScopeForMemberDeclarationResolution(declaration)
 
     override fun getNonDeclaredClasses(name: Name, result: MutableSet<ClassDescriptor>) {
-        // No extra classes
+        c.syntheticResolveExtension.generateSyntheticClasses(thisDescriptor, name, c, declarationProvider, result)
     }
 
     override fun getNonDeclaredFunctions(name: Name, result: MutableSet<SimpleFunctionDescriptor>) {

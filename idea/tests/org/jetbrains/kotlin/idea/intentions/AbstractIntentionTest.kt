@@ -1,17 +1,6 @@
 /*
- * Copyright 2010-2015 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Copyright 2010-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license
+ * that can be found in the license/LICENSE.txt file.
  */
 
 package org.jetbrains.kotlin.idea.intentions
@@ -19,6 +8,10 @@ package org.jetbrains.kotlin.idea.intentions
 import com.google.common.collect.Lists
 import com.intellij.codeInsight.intention.IntentionAction
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.progress.ProgressIndicator
+import com.intellij.openapi.progress.ProgressManager
+import com.intellij.openapi.progress.Task
+import com.intellij.openapi.progress.util.ProgressIndicatorBase
 import com.intellij.openapi.util.Computable
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.util.io.FileUtil
@@ -29,9 +22,7 @@ import com.intellij.refactoring.util.CommonRefactoringUtil
 import com.intellij.testFramework.PlatformTestUtil
 import junit.framework.ComparisonFailure
 import junit.framework.TestCase
-import org.jetbrains.kotlin.idea.test.ConfigLibraryUtil
-import org.jetbrains.kotlin.idea.test.DirectiveBasedActionUtils
-import org.jetbrains.kotlin.idea.test.KotlinLightCodeInsightFixtureTestCase
+import org.jetbrains.kotlin.idea.test.*
 import org.jetbrains.kotlin.idea.util.application.executeWriteCommand
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.test.InTextDirectivesUtils
@@ -39,6 +30,8 @@ import org.jetbrains.kotlin.test.KotlinTestUtils
 import org.junit.Assert
 import java.io.File
 import java.util.*
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.TimeUnit
 
 abstract class AbstractIntentionTest : KotlinLightCodeInsightFixtureTestCase() {
     protected open fun intentionFileName(): String = ".intention"
@@ -100,6 +93,7 @@ abstract class AbstractIntentionTest : KotlinLightCodeInsightFixtureTestCase() {
         val pathToFiles = mapOf(*(sourceFilePaths zip psiFiles).toTypedArray())
 
         val fileText = FileUtil.loadFile(mainFile, true)
+        val configured = configureCompilerOptions(fileText, project, module)
 
         ConfigLibraryUtil.configureLibrariesByDirective(myModule, PlatformTestUtil.getCommunityPath(), fileText)
 
@@ -118,9 +112,28 @@ abstract class AbstractIntentionTest : KotlinLightCodeInsightFixtureTestCase() {
             if (file is KtFile && !InTextDirectivesUtils.isDirectiveDefined(fileText, "// SKIP_ERRORS_AFTER")) {
                 DirectiveBasedActionUtils.checkForUnexpectedErrors(file as KtFile)
             }
+        } finally {
+            ConfigLibraryUtil.unconfigureLibrariesByDirective(myModule, fileText)
+            if (configured) {
+                rollbackCompilerOptions(project, module)
+            }
+        }
+    }
+
+    private fun <T> computeUnderProgressIndicatorAndWait(compute: () -> T): T {
+        val result = CompletableFuture<T>()
+        val progressIndicator = ProgressIndicatorBase()
+        try {
+            val task = object : Task.Backgroundable(project, "isApplicable", false) {
+                override fun run(indicator: ProgressIndicator) {
+                    result.complete(compute())
+                }
+            }
+            ProgressManager.getInstance().runProcessWithProgressAsynchronously(task, progressIndicator)
+            return result.get(10, TimeUnit.SECONDS)
         }
         finally {
-            ConfigLibraryUtil.unconfigureLibrariesByDirective(myModule, fileText)
+            progressIndicator.cancel()
         }
     }
 
@@ -129,7 +142,7 @@ abstract class AbstractIntentionTest : KotlinLightCodeInsightFixtureTestCase() {
         val isApplicableString = InTextDirectivesUtils.findStringWithPrefixes(fileText, "// ${isApplicableDirectiveName()}: ")
         val isApplicableExpected = isApplicableString == null || isApplicableString == "true"
 
-        val isApplicableOnPooled = ApplicationManager.getApplication().executeOnPooledThread(java.util.concurrent.Callable { ApplicationManager.getApplication().runReadAction(Computable { intentionAction.isAvailable(project, editor, file) }) }).get()
+        val isApplicableOnPooled = computeUnderProgressIndicatorAndWait { ApplicationManager.getApplication().runReadAction(Computable { intentionAction.isAvailable(project, editor, file) }) }
 
         val isApplicableOnEdt = intentionAction.isAvailable(project, editor, file)
 

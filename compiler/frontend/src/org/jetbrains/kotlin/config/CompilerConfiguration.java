@@ -26,7 +26,7 @@ import java.util.*;
 public class CompilerConfiguration {
     public static CompilerConfiguration EMPTY = new CompilerConfiguration();
 
-    private final Map<Key, Object> map = new HashMap<>();
+    private final Map<Key, Object> map = new LinkedHashMap<>();
     private boolean readOnly = false;
 
     static {
@@ -73,6 +73,12 @@ public class CompilerConfiguration {
         map.put(key.ideaKey, value);
     }
 
+    public <T> void putIfNotNull(@NotNull CompilerConfigurationKey<T> key, @Nullable T value) {
+        if (value != null) {
+            put(key, value);
+        }
+    }
+
     public <T> void add(@NotNull CompilerConfigurationKey<List<T>> key, @NotNull T value) {
         checkReadOnly();
         Key<List<T>> ideaKey = key.ideaKey;
@@ -89,13 +95,19 @@ public class CompilerConfiguration {
         data.put(key, value);
     }
 
-    public <T> void addAll(@NotNull CompilerConfigurationKey<List<T>> key, @NotNull Collection<T> values) {
+    public <T> void addAll(@NotNull CompilerConfigurationKey<List<T>> key, @Nullable Collection<T> values) {
+        if (values != null) {
+            addAll(key, getList(key).size(), values);
+        }
+    }
+
+    public <T> void addAll(@NotNull CompilerConfigurationKey<List<T>> key, int index, @NotNull Collection<T> values) {
         checkReadOnly();
         checkForNullElements(values);
         Key<List<T>> ideaKey = key.ideaKey;
         map.computeIfAbsent(ideaKey, k -> new ArrayList<T>());
         List<T> list = (List<T>) map.get(ideaKey);
-        list.addAll(values);
+        list.addAll(index, values);
     }
 
     public CompilerConfiguration copy() {
@@ -127,6 +139,9 @@ public class CompilerConfiguration {
         }
         else if (object instanceof Map) {
             return (T) Collections.unmodifiableMap((Map) object);
+        }
+        else if (object instanceof Set) {
+            return (T) Collections.unmodifiableSet((Set) object);
         }
         else if (object instanceof Collection) {
             return (T) Collections.unmodifiableCollection((Collection) object);

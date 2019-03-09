@@ -1,4 +1,6 @@
-// EXPECTED_REACHABLE_NODES: 1166
+// IGNORE_BACKEND: JS_IR
+// KJS_WITH_FULL_RUNTIME
+// EXPECTED_REACHABLE_NODES: 1323
 fun <T> checkThrown(x: T, block: (T) -> Any?): Unit? {
     return try {
         println((block(x) ?: "").toString())
@@ -29,9 +31,9 @@ enum class E {
     X, Y
 }
 
-private inline fun createWrongC(): C = js("void 0").unsafeCast<C>()
+private inline fun createWrongC(): C = js("{ name: 'Z' }").unsafeCast<C>()
 
-private inline fun createWrongE(): E = js("void 0").unsafeCast<E>()
+private inline fun createWrongE(): E = js("{ name: 'Z' }").unsafeCast<E>()
 
 fun box(): String {
     checkThrown(createWrongC()) {

@@ -1,28 +1,16 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
-apply { plugin("kotlin") }
+plugins {
+    kotlin("jvm")
+    id("jps-compatible")
+}
 
 dependencies {
-    testCompile(commonDep("junit:junit"))
-    testCompile(projectDist(":kotlin-test:kotlin-test-jvm"))
-    testCompile(projectDist(":kotlin-test:kotlin-test-junit"))
-    testCompile(project(":compiler.tests-common"))
-    testCompile(project(":core"))
-    testCompile(project(":compiler:util"))
-    testCompile(project(":compiler:backend"))
-    testCompile(project(":compiler:frontend"))
-    testCompile(project(":compiler:frontend.java"))
-    testCompile(project(":compiler:cli"))
-    testCompile(project(":compiler:serialization"))
-    testCompile(ideaSdkDeps("openapi", "idea", "util", "asm-all"))
-    // deps below are test runtime deps, but made test compile to split compilation and running to reduce mem req
-    testCompile(projectDist(":kotlin-stdlib"))
-    testCompile(projectDist(":kotlin-script-runtime"))
-    testCompile(projectDist(":kotlin-reflect"))
-    testCompile(projectTests(":compiler"))
-    testRuntime(projectRuntimeJar(":kotlin-preloader"))
-    testRuntime(ideaSdkCoreDeps("*.jar"))
-    testRuntime(ideaSdkDeps("*.jar"))
+    testCompile(projectTests(":compiler:tests-common"))
+    testCompileOnly(intellijCoreDep()) { includeJars("intellij-core") }
+    testCompile(projectTests(":generators:test-generator"))
+    testRuntime(project(":kotlin-reflect"))
+    testRuntime(intellijDep())
 }
 
 sourceSets {
@@ -35,13 +23,14 @@ tasks.withType<KotlinCompile> {
     kotlinOptions.jvmTarget = "1.8"
 }
 
-testsJar {}
-
 projectTest {
     executable = "${rootProject.extra["JDK_18"]!!}/bin/java"
-    dependsOnTaskIfExistsRec("dist", project = rootProject)
-    dependsOn(":prepare:mock-runtime-for-test:dist")
+    dependsOn(":dist")
     workingDir = rootDir
-    systemProperty("kotlin.test.script.classpath", the<JavaPluginConvention>().sourceSets.getByName("test").output.classesDirs.joinToString(File.pathSeparator))
+    systemProperty("kotlin.test.script.classpath", testSourceSet.output.classesDirs.joinToString(File.pathSeparator))
+    systemProperty("idea.home.path", intellijRootDir().canonicalPath)
 }
 
+val generateTests by generator("org.jetbrains.kotlin.generators.tests.GenerateJava8TestsKt")
+
+testsJar()

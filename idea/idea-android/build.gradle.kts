@@ -1,60 +1,99 @@
 
-apply { plugin("kotlin") }
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
+plugins {
+    kotlin("jvm")
+    id("jps-compatible")
+}
 
 dependencies {
-    compile(projectDist(":kotlin-reflect"))
+    testRuntime(intellijDep())
+
+    compileOnly(project(":kotlin-reflect-api"))
     compile(project(":compiler:util"))
     compile(project(":compiler:light-classes"))
     compile(project(":compiler:frontend"))
     compile(project(":compiler:frontend.java"))
     compile(project(":idea"))
+    compile(project(":idea:idea-jvm"))
     compile(project(":idea:idea-core"))
     compile(project(":idea:ide-common"))
     compile(project(":idea:idea-gradle"))
 
-    compile(ideaSdkDeps("openapi", "idea"))
-    compile(ideaPluginDeps("gradle-tooling-api", plugin = "gradle"))
-    compile(ideaPluginDeps("android", "android-common", "sdklib", "sdk-common", "sdk-tools", "layoutlib-api", plugin = "android"))
-    compile(preloadedDeps("dx", subdir = "android-5.0/lib"))
+    compile(androidDxJar())
 
-    testCompile(projectDist(":kotlin-test:kotlin-test-jvm"))
-    testCompile(project(":compiler.tests-common"))
-    testCompile(project(":idea:idea-test-framework")) { isTransitive = false }
+    compileOnly(project(":kotlin-android-extensions-runtime"))
+    compileOnly(intellijDep())
+    compileOnly(intellijPluginDep("android"))
+
+    testCompile(project(":kotlin-test:kotlin-test-jvm"))
+    testCompile(projectTests(":idea:idea-test-framework")) { isTransitive = false }
     testCompile(project(":plugins:lint")) { isTransitive = false }
     testCompile(project(":idea:idea-jvm"))
+    testCompile(projectTests(":compiler:tests-common"))
     testCompile(projectTests(":idea"))
     testCompile(projectTests(":idea:idea-gradle"))
-    testCompile(ideaPluginDeps("properties", plugin = "properties"))
-    testCompile(ideaSdkDeps("gson"))
     testCompile(commonDep("junit:junit"))
 
+    testCompile(project(":idea:idea-native")) { isTransitive = false }
+    testCompile(project(":idea:idea-gradle-native")) { isTransitive = false }
+    testRuntime(project(":kotlin-native:kotlin-native-library-reader")) { isTransitive = false }
+    testRuntime(project(":kotlin-native:kotlin-native-utils")) { isTransitive = false }
+
+    testCompile(intellijDep())
+    testCompile(intellijPluginDep("properties"))
+    testCompileOnly(intellijPluginDep("android"))
+
+    testRuntime(project(":kotlin-reflect"))
     testRuntime(project(":plugins:android-extensions-ide"))
+    testRuntime(project(":plugins:kapt3-idea"))
     testRuntime(project(":sam-with-receiver-ide-plugin"))
     testRuntime(project(":noarg-ide-plugin"))
     testRuntime(project(":allopen-ide-plugin"))
-    testRuntime(ideaSdkDeps("*.jar"))
-    testRuntime(ideaPluginDeps("idea-junit", "resources_en", plugin = "junit"))
-    testRuntime(ideaPluginDeps("IntelliLang", plugin = "IntelliLang"))
-    testRuntime(ideaPluginDeps("jcommander", "testng", "testng-plugin", "resources_en", plugin = "testng"))
-    testRuntime(ideaPluginDeps("copyright", plugin = "copyright"))
-    testRuntime(ideaPluginDeps("properties", "resources_en", plugin = "properties"))
-    testRuntime(ideaPluginDeps("java-i18n", plugin = "java-i18n"))
-    testRuntime(ideaPluginDeps("*.jar", plugin = "gradle"))
-    testRuntime(ideaPluginDeps("*.jar", plugin = "Groovy"))
-    testRuntime(ideaPluginDeps("coverage", "jacocoant", plugin = "coverage"))
-    testRuntime(ideaPluginDeps("java-decompiler", plugin = "java-decompiler"))
-    testRuntime(ideaPluginDeps("*.jar", plugin = "maven"))
-    testRuntime(ideaPluginDeps("*.jar", plugin = "android"))
+    testRuntime(project(":kotlin-scripting-idea"))
+    testRuntime(project(":kotlinx-serialization-ide-plugin"))
+
+    testRuntime(intellijPluginDep("android"))
+
+    if (Platform[181].orHigher()) {
+        testRuntime(intellijPluginDep("smali"))
+    }
+
+    testRuntime(intellijPluginDep("copyright"))
+    testRuntime(intellijPluginDep("coverage"))
+    testRuntime(intellijPluginDep("gradle"))
+    testRuntime(intellijPluginDep("Groovy"))
+    testRuntime(intellijPluginDep("IntelliLang"))
+    testRuntime(intellijPluginDep("java-decompiler"))
+    testRuntime(intellijPluginDep("java-i18n"))
+    testRuntime(intellijPluginDep("junit"))
+
+    Ide.IJ {
+        testRuntime(intellijPluginDep("maven"))
+    }
+
+    testRuntime(intellijPluginDep("testng"))
 }
 
 sourceSets {
-    "main" { projectDefault() }
-    "test" { projectDefault() }
+    if (Ide.AS33.orHigher() || Ide.IJ191.orHigher()) {
+        "main" { }
+        "test" { }
+    } else {
+        "main" { projectDefault() }
+        "test" { projectDefault() }
+    }
 }
 
 projectTest {
     workingDir = rootDir
+    useAndroidSdk()
 }
 
 testsJar {}
 
+runtimeJar {
+    archiveName = "android-ide.jar"
+}
+
+ideaPlugin()

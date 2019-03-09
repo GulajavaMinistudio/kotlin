@@ -1,13 +1,19 @@
 description = 'Kotlin Test Common'
 
 apply plugin: 'kotlin-platform-common'
+apply plugin: 'pill-configurable'
 
+configureDist(project)
 configurePublishing(project)
 
 
 dependencies {
-    compile project(':kotlin-stdlib-common')
+    compile kotlinStdlib("common")
     testCompile project(":kotlin-test:kotlin-test-annotations-common")
+}
+
+pill {
+    importAsLibrary = true
 }
 
 jar {
@@ -19,7 +25,20 @@ task sourcesJar(type: Jar, dependsOn: classes) {
     from sourceSets.main.kotlin
 }
 
+classes.dependsOn.remove("compileJava")
+
 artifacts {
     archives sourcesJar
-    archives javadocJar
+}
+
+javadocJar()
+
+compileKotlinCommon {
+    kotlinOptions {
+        freeCompilerArgs = [
+                "-module-name", project.name,
+                "-Xallow-kotlin-package",
+                "-Xuse-experimental=kotlin.contracts.ExperimentalContracts"
+        ]
+    }
 }

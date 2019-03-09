@@ -4,7 +4,7 @@ import org.codehaus.groovy.runtime.InvokerHelper
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.artifacts.Dependency
-import org.gradle.api.artifacts.maven.MavenDeployer
+import org.gradle.api.artifacts.maven.MavenDeployment
 import org.gradle.api.artifacts.maven.MavenResolver
 
 import org.gradle.api.plugins.MavenRepositoryHandlerConvention
@@ -85,6 +85,16 @@ open class PublishedKotlinModule : Plugin<Project> {
                     dependencies.removeIf {
                         InvokerHelper.getMetaClass(it).getProperty(it, "scope") == "test"
                     }
+
+                    dependencies
+                        .find {
+                            InvokerHelper.getMetaClass(it).getProperty(it, "groupId") == "org.jetbrains.kotlin"
+                                    && InvokerHelper.getMetaClass(it).getProperty(it, "artifactId") == "kotlin-stdlib"
+                        }
+                        ?.also {
+                            InvokerHelper.getMetaClass(it).setProperty(it, "exclusions", emptyList<Any>())
+                            logger.warn("WARNING! Removed exclusions from kotlin-stdlib dependency of ${this.artifactId} artifact's maven metadata, check kotlin-stdlib dependency of ${project.path} project")
+                        }
                 }
             }
 
@@ -98,23 +108,18 @@ open class PublishedKotlinModule : Plugin<Project> {
                 val password: String? by preparePublication.extra
                 val repoUrl: String by preparePublication.extra
 
-                var repository: MavenRemoteRepository by Delegates.notNull()
-
-                val signPom = rootProject.extra["signPom"] as groovy.lang.Closure<*>
+                var repository by Delegates.notNull<MavenRemoteRepository>()
 
                 repositories {
                     withConvention(MavenRepositoryHandlerConvention::class) {
 
                         mavenDeployer {
-                            signPom.call(project, this as MavenDeployer)
-
                             withGroovyBuilder {
-                                // TODO: Use with kotlin-dsl 0.12+ instead of signPom
-//                                "beforeDeployment" {
-//                                    val signing = project.the<SigningExtension>()
-//                                    if (signing.isRequired)
-//                                        signing.signPom(this as MavenDeployment)
-//                                }
+                                "beforeDeployment" {
+                                    val signing = project.the<SigningExtension>()
+                                    if (signing.isRequired)
+                                        signing.signPom(delegate as MavenDeployment)
+                                }
 
                                 "repository"("url" to repoUrl)!!.also { repository = it as MavenRemoteRepository }.withGroovyBuilder {
                                     if (username != null && password != null) {

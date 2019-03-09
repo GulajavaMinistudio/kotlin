@@ -1,11 +1,14 @@
 description = "Kotlin Android Extensions Runtime"
 
-apply { plugin("kotlin") }
+plugins {
+    kotlin("jvm")
+    id("jps-compatible")
+}
 
 jvmTarget = "1.6"
 
 dependencies {
-    compile(project(":kotlin-stdlib"))
+    compile(kotlinStdlib())
     compileOnly(commonDep("com.google.android", "android"))
 }
 
@@ -14,10 +17,10 @@ sourceSets {
     "test" {}
 }
 
+publish()
+
 runtimeJar()
 sourcesJar()
 javadocJar()
 
 dist(targetName = "android-extensions-runtime.jar")
-
-publish()

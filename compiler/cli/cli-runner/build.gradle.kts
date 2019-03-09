@@ -1,12 +1,13 @@
 
 description = "Kotlin Runner"
 
-apply { plugin("kotlin") }
-
-jvmTarget = "1.6"
+plugins {
+    kotlin("jvm")
+    id("jps-compatible")
+}
 
 dependencies {
-    compile(projectDist(":kotlin-stdlib"))
+    compile(kotlinStdlib())
 }
 
 sourceSets {
@@ -16,7 +17,7 @@ sourceSets {
 
 runtimeJar {
     manifest.attributes.put("Main-Class", "org.jetbrains.kotlin.runner.Main")
-    manifest.attributes.put("Class-Path", "kotlin-runtime.jar")
+    manifest.attributes.put("Class-Path", "kotlin-stdlib.jar")
 }
 
 dist()

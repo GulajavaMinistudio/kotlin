@@ -1,17 +1,6 @@
 /*
- * Copyright 2010-2015 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Copyright 2010-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license
+ * that can be found in the license/LICENSE.txt file.
  */
 
 package org.jetbrains.kotlin.idea.debugger.evaluate
@@ -53,6 +42,7 @@ import org.jetbrains.eval4j.jdi.asValue
 import org.jetbrains.kotlin.idea.KotlinFileType
 import org.jetbrains.kotlin.idea.debugger.KotlinDebuggerTestBase
 import org.jetbrains.kotlin.idea.debugger.KotlinFrameExtraVariablesProvider
+import org.jetbrains.kotlin.idea.debugger.ToggleKotlinVariablesState
 import org.jetbrains.kotlin.idea.debugger.evaluate.AbstractKotlinEvaluateExpressionTest.PrinterConfig.DescriptorViewOptions
 import org.jetbrains.kotlin.idea.debugger.invokeInManagerThread
 import org.jetbrains.kotlin.idea.util.application.runReadAction
@@ -68,6 +58,7 @@ abstract class AbstractKotlinEvaluateExpressionTest : KotlinDebuggerTestBase() {
     private var appender: AppenderSkeleton? = null
 
     private var oldLogLevel: Level? = null
+    private var oldShowKotlinVariables: Boolean = false
     private var oldShowFqTypeNames = false
 
     override fun setUp() {
@@ -77,6 +68,8 @@ abstract class AbstractKotlinEvaluateExpressionTest : KotlinDebuggerTestBase() {
         oldShowFqTypeNames = classRenderer.SHOW_FQ_TYPE_NAMES
         classRenderer.SHOW_FQ_TYPE_NAMES = true
 
+        oldShowKotlinVariables = ToggleKotlinVariablesState.getService().kotlinVariableView
+
         oldLogLevel = logger.level
         logger.level = Level.DEBUG
 
@@ -84,6 +77,7 @@ abstract class AbstractKotlinEvaluateExpressionTest : KotlinDebuggerTestBase() {
             override fun append(event: LoggingEvent?) {
                 println(event?.renderedMessage, ProcessOutputTypes.SYSTEM)
             }
+
             override fun close() {}
             override fun requiresLayout() = false
         }
@@ -92,6 +86,8 @@ abstract class AbstractKotlinEvaluateExpressionTest : KotlinDebuggerTestBase() {
     }
 
     override fun tearDown() {
+        ToggleKotlinVariablesState.getService().kotlinVariableView = oldShowKotlinVariables
+
         logger.level = oldLogLevel
         logger.removeAppender(appender)
 
@@ -110,10 +106,6 @@ abstract class AbstractKotlinEvaluateExpressionTest : KotlinDebuggerTestBase() {
         configureSettings(fileText)
         createAdditionalBreakpoints(fileText)
 
-        val shouldPrintFrame = isDirectiveDefined(fileText, "// PRINT_FRAME")
-        val skipInPrintFrame = if (shouldPrintFrame) findListWithPrefixes(fileText, "// SKIP: ") else emptyList()
-        val descriptorViewOptions = DescriptorViewOptions.valueOf(findStringWithPrefixes(fileText, "// DESCRIPTOR_VIEW_OPTIONS: ") ?: "FULL")
-
         val expressions = loadTestDirectivesPairs(fileText, "// EXPRESSION: ", "// RESULT: ")
 
         val blocks = findFilesWithBlocks(file).map { FileUtil.loadFile(it, true) }
@@ -121,15 +113,9 @@ abstract class AbstractKotlinEvaluateExpressionTest : KotlinDebuggerTestBase() {
 
         createDebugProcess(path)
 
+        val printFrameHandler = PrintFrameHandler(fileText)
+
         doStepping(path)
-
-        var variablesView: XVariablesView? = null
-        var watchesView: XWatchesViewImpl? = null
-
-        ApplicationManager.getApplication().invokeAndWait({
-            variablesView = createVariablesView()
-            watchesView = createWatchesView()
-        }, ModalityState.any())
 
         doOnBreakpoint {
             val exceptions = linkedMapOf<String, Throwable>()
@@ -147,15 +133,8 @@ abstract class AbstractKotlinEvaluateExpressionTest : KotlinDebuggerTestBase() {
                         evaluate(block, CodeFragmentKind.CODE_BLOCK, expectedBlockResults[i])
                     }
                 }
-            }
-            finally {
-               if (shouldPrintFrame) {
-                    printFrame(variablesView!!, watchesView!!, PrinterConfig(skipInPrintFrame, descriptorViewOptions))
-                    println(fileText, ProcessOutputTypes.SYSTEM)
-                }
-                else {
-                    resume(this)
-                }
+            } finally {
+                printFrameHandler.trigger(this@doOnBreakpoint)
             }
 
             checkExceptions(exceptions)
@@ -172,6 +151,8 @@ abstract class AbstractKotlinEvaluateExpressionTest : KotlinDebuggerTestBase() {
 
         createDebugProcess(path)
 
+        val printFrameHandler = PrintFrameHandler(fileText)
+
         val expressions = loadTestDirectivesPairs(fileText, "// EXPRESSION: ", "// RESULT: ")
 
         val exceptions = linkedMapOf<String, Throwable>()
@@ -180,21 +161,54 @@ abstract class AbstractKotlinEvaluateExpressionTest : KotlinDebuggerTestBase() {
                 doOnBreakpoint {
                     try {
                         evaluate(expression, CodeFragmentKind.EXPRESSION, expected)
-                    }
-                    finally {
-                        resume(this)
+                    } finally {
+                        printFrameHandler.trigger(this@doOnBreakpoint)
                     }
                 }
             }
         }
 
         checkExceptions(exceptions)
-
         finish()
     }
 
+    private inner class PrintFrameHandler(fileText: String) {
+        private val shouldPrintFrame = isDirectiveDefined(fileText, "// PRINT_FRAME")
+        private val skipInPrintFrame = if (shouldPrintFrame) findListWithPrefixes(fileText, "// SKIP: ") else emptyList()
+        private val descriptorViewOptions =
+            DescriptorViewOptions.valueOf(findStringWithPrefixes(fileText, "// DESCRIPTOR_VIEW_OPTIONS: ") ?: "FULL")
+
+        private val kotlinVariablesState: ToggleKotlinVariablesState
+        private val oldKotlinVariablesState: Boolean
+
+        private lateinit var variablesView: XVariablesView
+        private lateinit var watchesView: XWatchesViewImpl
+
+        init {
+            ApplicationManager.getApplication().invokeAndWait(
+                {
+                    variablesView = createVariablesView()
+                    watchesView = createWatchesView()
+                }, ModalityState.any()
+            )
+
+            kotlinVariablesState = ToggleKotlinVariablesState.getService()
+            oldKotlinVariablesState = kotlinVariablesState.kotlinVariableView
+
+            kotlinVariablesState.kotlinVariableView = isDirectiveDefined(fileText, "// SHOW_KOTLIN_VARIABLES")
+        }
+
+        fun trigger(suspendContext: SuspendContextImpl) {
+            if (shouldPrintFrame) {
+                suspendContext.printFrame(variablesView, watchesView, PrinterConfig(skipInPrintFrame, descriptorViewOptions))
+            } else {
+                resume(suspendContext)
+            }
+        }
+    }
+
     private fun createWatchesView(): XWatchesViewImpl {
-        val session = myDebuggerSession.xDebugSession  as XDebugSessionImpl
+        val session = myDebuggerSession.xDebugSession as XDebugSessionImpl
         val watchesView = XWatchesViewImpl(session, false)
         Disposer.register(testRootDisposable, watchesView)
         XDebugViewSessionListener.attach(watchesView, session)
@@ -248,7 +262,7 @@ abstract class AbstractKotlinEvaluateExpressionTest : KotlinDebuggerTestBase() {
         }
 
         fun shouldRenderSourcesPosition(): Boolean {
-            return when(viewOptions) {
+            return when (viewOptions) {
                 DescriptorViewOptions.FULL -> true
                 else -> false
             }
@@ -261,16 +275,16 @@ abstract class AbstractKotlinEvaluateExpressionTest : KotlinDebuggerTestBase() {
             }
         }
 
-        fun renderLabel(descriptor: NodeDescriptorImpl): String {
+        fun renderLabel(node: TreeNode, descriptor: NodeDescriptorImpl): String {
             return when {
                 descriptor is WatchItemDescriptor -> descriptor.calcValueName()
-                viewOptions.toString().contains("NAME") -> descriptor.name ?: descriptor.label
+                viewOptions.toString().contains("NAME") -> (node as? XValueNodeImpl)?.name ?: descriptor.name ?: descriptor.label
                 else -> descriptor.label
             }
         }
 
         fun shouldComputeResultOfCreateExpression(): Boolean {
-           return viewOptions == DescriptorViewOptions.NAME_EXPRESSION_RESULT
+            return viewOptions == DescriptorViewOptions.NAME_EXPRESSION_RESULT
         }
     }
 
@@ -301,7 +315,7 @@ abstract class AbstractKotlinEvaluateExpressionTest : KotlinDebuggerTestBase() {
             if (descriptor is DefaultNodeDescriptor) return true
             if (config.variablesToSkipInPrintFrame.contains(descriptor.name)) return true
 
-            var label = config.renderLabel(descriptor)
+            var label = config.renderLabel(node, descriptor)
 
             // TODO: update presentation before calc label
             if (label == NodeDescriptorImpl.UNKNOWN_VALUE_MESSAGE && descriptor is StaticDescriptor) {
@@ -429,7 +443,7 @@ abstract class AbstractKotlinEvaluateExpressionTest : KotlinDebuggerTestBase() {
 
         for (labelAsText in labelsAsText) {
             val labelParts = labelAsText.split("=")
-            assert(labelParts.size == 2) { "Wrong format for DEBUG_LABEL directive: // DEBUG_LABEL: {localVariableName} = {labelText}"}
+            assert(labelParts.size == 2) { "Wrong format for DEBUG_LABEL directive: // DEBUG_LABEL: {localVariableName} = {labelText}" }
             val localVariableName = labelParts[0].trim()
             val labelName = labelParts[1].trim()
             val localVariable = debuggerContext.frameProxy!!.visibleVariableByName(localVariableName)
@@ -446,32 +460,41 @@ abstract class AbstractKotlinEvaluateExpressionTest : KotlinDebuggerTestBase() {
     }
 
     private fun SuspendContextImpl.evaluate(item: TextWithImportsImpl, expectedResult: String?) {
-        runReadAction {
-            val sourcePosition = ContextUtil.getSourcePosition(this)
+        val sourcePosition = ContextUtil.getSourcePosition(this)
+        val contextElement = ContextUtil.getContextElement(debuggerContext)!!
 
-            val contextElement = ContextUtil.getContextElement(debuggerContext)!!
-            Assert.assertTrue("KotlinCodeFragmentFactory should be accepted for context element otherwise default evaluator will be called. ContextElement = ${contextElement.text}",
-                              KotlinCodeFragmentFactory().isContextAccepted(contextElement))
+        assert(KotlinCodeFragmentFactory().isContextAccepted(contextElement)) {
+            val text = runReadAction { contextElement.text }
+            "KotlinCodeFragmentFactory should be accepted for context element otherwise default evaluator will be called. " +
+                    "ContextElement = $text"
+        }
 
-            contextElement.putCopyableUserData(KotlinCodeFragmentFactory.DEBUG_CONTEXT_FOR_TESTS, this@AbstractKotlinEvaluateExpressionTest.debuggerContext)
+        contextElement.putCopyableUserData(
+            KotlinCodeFragmentFactory.DEBUG_CONTEXT_FOR_TESTS,
+            this@AbstractKotlinEvaluateExpressionTest.debuggerContext
+        )
 
+        runActionInSuspendCommand {
+            try {
+                val evaluator = runReadAction { EvaluatorBuilderImpl.build(item, contextElement, sourcePosition, project) }
+                    ?: throw AssertionError("Cannot create an Evaluator for Evaluate Expression")
 
-            runActionInSuspendCommand {
-                try {
-                    val evaluator = EvaluatorBuilderImpl.build(item, contextElement, sourcePosition, project)
-                                    ?: throw AssertionError("Cannot create an Evaluator for Evaluate Expression")
-
-                    val value = evaluator.evaluate(this@AbstractKotlinEvaluateExpressionTest.evaluationContext)
-                    val actualResult = value.asValue().asString()
-                    if (expectedResult != null) {
-                        Assert.assertTrue("Evaluate expression returns wrong result for ${item.text}:" +
-                                          "\nexpected = $expectedResult\nactual   = $actualResult\n", expectedResult == actualResult)
-                    }
+                val value = evaluator.evaluate(this@AbstractKotlinEvaluateExpressionTest.evaluationContext)
+                val actualResult = value.asValue().asString()
+                if (expectedResult != null) {
+                    Assert.assertEquals(
+                        "Evaluate expression returns wrong result for ${item.text}:\n" +
+                                "expected = $expectedResult\n" +
+                                "actual   = $actualResult\n",
+                        expectedResult, actualResult)
                 }
-                catch (e: EvaluateException) {
-                    Assert.assertTrue("Evaluate expression throws wrong exception for ${item.text}:" +
-                                      "\nexpected = $expectedResult\nactual   = ${e.message}\n", expectedResult == e.message?.replaceFirst(ID_PART_REGEX, "id=ID"))
-                }
+            } catch (e: EvaluateException) {
+                val expectedMessage = e.message?.replaceFirst(ID_PART_REGEX, "id=ID")
+                Assert.assertEquals(
+                    "Evaluate expression throws wrong exception for ${item.text}:\n" +
+                            "expected = $expectedResult\n" +
+                            "actual   = $expectedMessage\n",
+                    expectedResult, expectedMessage)
             }
         }
     }
@@ -479,7 +502,8 @@ abstract class AbstractKotlinEvaluateExpressionTest : KotlinDebuggerTestBase() {
     private fun SuspendContextImpl.runActionInSuspendCommand(action: SuspendContextImpl.() -> Unit) {
         if (myInProgress) {
             action()
-        } else {
+        }
+        else {
             val command = object : SuspendContextCommandImpl(this) {
                 override fun contextAction(suspendContext: SuspendContextImpl) {
                     action(suspendContext)

@@ -23,8 +23,8 @@ interface KotlinJvmOptions  : org.jetbrains.kotlin.gradle.dsl.KotlinCommonOption
      var jdkHome: kotlin.String?
 
     /**
-     * Target version of the generated JVM bytecode (1.6 or 1.8), default is 1.6
-     * Possible values: "1.6", "1.8"
+     * Target version of the generated JVM bytecode (1.6, 1.8, 9, 10, 11 or 12), default is 1.6
+     * Possible values: "1.6", "1.8", "9", "10", "11", "12"
      * Default value: "1.6"
      */
      var jvmTarget: kotlin.String
@@ -36,13 +36,13 @@ interface KotlinJvmOptions  : org.jetbrains.kotlin.gradle.dsl.KotlinCommonOption
      var noJdk: kotlin.Boolean
 
     /**
-     * Don't include Kotlin reflection implementation into classpath
+     * Don't include kotlin-reflect.jar into classpath
      * Default value: true
      */
      var noReflect: kotlin.Boolean
 
     /**
-     * Don't include Kotlin runtime into classpath
+     * Don't include kotlin-stdlib.jar or kotlin-reflect.jar into classpath
      * Default value: true
      */
      var noStdlib: kotlin.Boolean

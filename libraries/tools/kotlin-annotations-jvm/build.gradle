@@ -1,13 +1,19 @@
 description = 'Kotlin annotations for JVM'
 
 apply plugin: 'kotlin'
+apply plugin: 'pill-configurable'
 
 configureJvm6Project(project)
+configureDist(project)
 configurePublishing(project)
+
+pill {
+    importAsLibrary = true
+}
 
 sourceSets {
     main {
-        kotlin {
+        java {
             srcDir 'src'
         }
     }
@@ -15,8 +21,9 @@ sourceSets {
 
 artifacts {
     archives sourcesJar
-    archives javadocJar
 }
+
+javadocJar()
 
 dist {
     from (jar, sourcesJar)

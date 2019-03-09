@@ -1,17 +1,21 @@
+import org.gradle.plugins.ide.idea.model.IdeaModel
 
-apply { plugin("kotlin") }
-
-jvmTarget = "1.6"
+plugins {
+    idea
+    kotlin("jvm")
+    id("jps-compatible")
+}
 
 dependencies {
-    compile(project(":core"))
+    compile(project(":core:descriptors"))
     compile(project(":compiler:util"))
     compile(project(":compiler:frontend"))
     compile(project(":compiler:backend-common"))
     compile(project(":js:js.ast"))
     compile(project(":js:js.frontend"))
     compile(project(":js:js.parser"))
-    compile(ideaSdkCoreDeps("intellij-core"))
+    compileOnly(intellijCoreDep()) { includeJars("intellij-core") }
+    compileOnly(intellijDep()) { includeJars("trove4j", "guava", rootProject = rootProject) }
 }
 
 sourceSets {
@@ -20,4 +24,10 @@ sourceSets {
         java.srcDir("../js.inliner/src")
     }
     "test" {}
+}
+
+configure<IdeaModel> {
+    module {
+        excludeDirs = excludeDirs + files("testData/out-min")
+    }
 }

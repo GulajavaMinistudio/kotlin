@@ -1,4 +1,5 @@
-// LANGUAGE_VERSION: 1.0
+// !LANGUAGE: -InlineConstVals
+// IGNORE_BACKEND: JVM_IR
 // FILE: Foo.kt
 
 private const val OUTER_PRIVATE = 20
@@ -9,9 +10,13 @@ class Foo {
     }
 
     fun foo() {
+        // Access to the property use getstatic on the backed field
         LOCAL_PRIVATE
+        // Access to the property requires an invokestatic
         OUTER_PRIVATE
     }
 }
 
-// 2 INVOKESTATIC
+// 1 INVOKESTATIC
+// 1 PUTSTATIC
+// 2 GETSTATIC

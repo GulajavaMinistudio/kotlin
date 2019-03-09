@@ -1,3 +1,4 @@
+// IGNORE_BACKEND: JVM_IR
 class EncapsulatedEnum<T : Enum<T>>(val value: T)
 
 enum class MyEnum(val value: String) {
@@ -24,4 +25,4 @@ fun box(): String {
     return res
 }
 
-// 1 LOOKUPSWITCH
+// 1 TABLESWITCH

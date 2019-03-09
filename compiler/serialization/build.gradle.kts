@@ -1,16 +1,17 @@
 
-apply { plugin("kotlin") }
-
-jvmTarget = "1.6"
+plugins {
+    kotlin("jvm")
+    id("jps-compatible")
+}
 
 dependencies {
     compile(project(":compiler:util"))
     compile(project(":compiler:frontend"))
-    compile(project(":core"))
+    compile(project(":core:descriptors"))
+    compile(project(":core:deserialization"))
 }
 
 sourceSets {
     "main" { projectDefault() }
     "test" {}
 }
-

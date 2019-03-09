@@ -17,28 +17,71 @@
 package org.jetbrains.kotlin.ir.declarations.impl
 
 import org.jetbrains.kotlin.descriptors.ClassConstructorDescriptor
+import org.jetbrains.kotlin.descriptors.Visibility
 import org.jetbrains.kotlin.ir.declarations.IrConstructor
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationOrigin
-import org.jetbrains.kotlin.ir.declarations.IrValueParameter
 import org.jetbrains.kotlin.ir.expressions.IrBody
 import org.jetbrains.kotlin.ir.symbols.IrConstructorSymbol
 import org.jetbrains.kotlin.ir.symbols.impl.IrConstructorSymbolImpl
-import org.jetbrains.kotlin.ir.visitors.IrElementTransformer
+import org.jetbrains.kotlin.ir.types.IrType
 import org.jetbrains.kotlin.ir.visitors.IrElementVisitor
+import org.jetbrains.kotlin.name.Name
+import org.jetbrains.kotlin.resolve.descriptorUtil.isEffectivelyExternal
 
 class IrConstructorImpl(
+    startOffset: Int,
+    endOffset: Int,
+    origin: IrDeclarationOrigin,
+    override val symbol: IrConstructorSymbol,
+    name: Name,
+    visibility: Visibility,
+    returnType: IrType,
+    isInline: Boolean,
+    isExternal: Boolean,
+    override val isPrimary: Boolean
+) :
+    IrFunctionBase(
+        startOffset, endOffset, origin, name,
+        visibility, isInline, isExternal, returnType
+    ),
+    IrConstructor {
+
+    constructor(
         startOffset: Int,
         endOffset: Int,
         origin: IrDeclarationOrigin,
-        override val symbol: IrConstructorSymbol
-) : IrFunctionBase(startOffset, endOffset, origin), IrConstructor {
-    constructor(startOffset: Int, endOffset: Int, origin: IrDeclarationOrigin, descriptor: ClassConstructorDescriptor) :
-            this(startOffset, endOffset, origin, IrConstructorSymbolImpl(descriptor))
+        symbol: IrConstructorSymbol,
+        returnType: IrType,
+        body: IrBody? = null
+    ) : this(
+        startOffset, endOffset, origin, symbol,
+        symbol.descriptor.name,
+        symbol.descriptor.visibility,
+        returnType,
+        symbol.descriptor.isInline,
+        symbol.descriptor.isEffectivelyExternal(),
+        symbol.descriptor.isPrimary
+    ) {
+        this.body = body
+    }
 
     constructor(
-            startOffset: Int, endOffset: Int, origin: IrDeclarationOrigin, descriptor: ClassConstructorDescriptor,
-            body: IrBody
-    ) : this(startOffset, endOffset, origin, descriptor) {
+        startOffset: Int,
+        endOffset: Int,
+        origin: IrDeclarationOrigin,
+        descriptor: ClassConstructorDescriptor,
+        returnType: IrType
+    ) : this(startOffset, endOffset, origin, IrConstructorSymbolImpl(descriptor), returnType)
+
+    @Deprecated("Use constructor which takes symbol instead of descriptor")
+    constructor(
+        startOffset: Int,
+        endOffset: Int,
+        origin: IrDeclarationOrigin,
+        descriptor: ClassConstructorDescriptor,
+        returnType: IrType,
+        body: IrBody?
+    ) : this(startOffset, endOffset, origin, descriptor, returnType) {
         this.body = body
     }
 
@@ -48,7 +91,6 @@ class IrConstructorImpl(
 
     override val descriptor: ClassConstructorDescriptor get() = symbol.descriptor
 
-    override fun <R, D> accept(visitor: IrElementVisitor<R, D>, data: D): R {
-        return visitor.visitConstructor(this, data)
-    }
+    override fun <R, D> accept(visitor: IrElementVisitor<R, D>, data: D): R =
+        visitor.visitConstructor(this, data)
 }

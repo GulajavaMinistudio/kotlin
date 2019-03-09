@@ -1,18 +1,20 @@
-
-apply { plugin("kotlin") }
-
-jvmTarget = "1.6"
+plugins {
+    kotlin("jvm")
+    id("jps-compatible")
+}
 
 dependencies {
     compile(project(":core:util.runtime"))
     compile(commonDep("javax.inject"))
-    compile(ideaSdkCoreDeps("intellij-core"))
-    compileOnly(project(":kotlin-stdlib"))
-    testCompile(project(":kotlin-stdlib"))
-    testCompile(projectDist(":kotlin-test:kotlin-test-jvm"))
-    testCompile(projectDist(":kotlin-test:kotlin-test-junit"))
+    compileOnly(kotlinStdlib())
+    compileOnly(intellijCoreDep()) { includeJars("intellij-core") }
+    testCompile(kotlinStdlib())
+    testCompileOnly("org.jetbrains:annotations:13.0")
+    testCompile(project(":kotlin-test:kotlin-test-jvm"))
+    testCompile(project(":kotlin-test:kotlin-test-junit"))
     testCompile(commonDep("junit:junit"))
-    testRuntime(ideaSdkCoreDeps("trove4j", "intellij-core"))
+    testCompileOnly(intellijCoreDep()) { includeJars("intellij-core") }
+    testRuntime(intellijDep()) { includeJars("trove4j", "util") }
 }
 
 sourceSets {
@@ -23,7 +25,6 @@ sourceSets {
 testsJar {}
 
 projectTest {
-    dependsOnTaskIfExistsRec("dist", project = rootProject)
-    dependsOn(":prepare:mock-runtime-for-test:dist")
+    dependsOn(":dist")
     workingDir = rootDir
 }

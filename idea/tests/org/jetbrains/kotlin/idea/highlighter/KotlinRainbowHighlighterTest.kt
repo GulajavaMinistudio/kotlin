@@ -1,17 +1,6 @@
 /*
- * Copyright 2010-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Copyright 2010-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license
+ * that can be found in the license/LICENSE.txt file.
  */
 
 package org.jetbrains.kotlin.idea.highlighter
@@ -36,6 +25,32 @@ class KotlinRainbowHighlighterTest : KotlinLightCodeInsightFixtureTestCase() {
              fun main(<rainbow color='ff000003'>args</rainbow>: Array<String>) {
                   listOf("abc", "def").filter { <rainbow color='ff000002'>it</rainbow>.any { <rainbow color='ff000003'>it</rainbow> == 'a' } }
              }
+        """)
+    }
+
+    fun testRainbowNestedVal() {
+        checkRainbow(
+            """
+             fun some() {
+                 run {
+                     val <rainbow color='ff000001'>name</rainbow> = 1
+                     <rainbow color='ff000001'>name</rainbow>
+                     run {
+                         val <rainbow color='ff000004'>name</rainbow> = 2
+                         <rainbow color='ff000004'>name</rainbow>
+                     }
+                 }
+             }
+            """
+        )
+    }
+
+    fun testAssignmentIt() {
+        checkRainbow("""
+            val f : (Int) -> Unit = {
+                val <rainbow color='ff000004'>t</rainbow> = <rainbow color='ff000002'>it</rainbow>
+                <rainbow color='ff000002'>it</rainbow>
+            }
         """)
     }
 
@@ -81,6 +96,24 @@ class KotlinRainbowHighlighterTest : KotlinLightCodeInsightFixtureTestCase() {
                 println(<rainbow color='ff000004'>b</rainbow>)
             }
         """)
+    }
+
+    fun testInitBlock() {
+        checkRainbow("""
+            class Some {
+                init {
+                    val <rainbow color='ff000004'>x</rainbow> = 128
+                    println(<rainbow color='ff000004'>x</rainbow>)
+
+                    run {
+                        println(<rainbow color='ff000004'>x</rainbow>)
+                    }
+                    fun some() {
+                        val <rainbow color='ff000003'>b</rainbow> = 299
+                        println(<rainbow color='ff000003'>b</rainbow> + <rainbow color='ff000004'>x</rainbow>)
+                    }
+                }
+            }""")
     }
 
     private fun checkRainbow(code: String) {

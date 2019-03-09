@@ -1,3 +1,5 @@
+// EXPECTED_DUPLICATED_HIGHLIGHTING
+
 var <info textAttributesKey="KOTLIN_MUTABLE_VARIABLE"><info textAttributesKey="KOTLIN_PACKAGE_PROPERTY">x</info></info> = 5
 
 val <info textAttributesKey="KOTLIN_CLASS">Int</info>.<info textAttributesKey="KOTLIN_EXTENSION_PROPERTY">sq</info> : <info textAttributesKey="KOTLIN_CLASS">Int</info>
@@ -10,7 +12,11 @@ val <info textAttributesKey="KOTLIN_PACKAGE_PROPERTY">y</info> : <info textAttri
   return 5.<info textAttributesKey="KOTLIN_EXTENSION_PROPERTY">sq</info> + <info textAttributesKey="KOTLIN_BACKING_FIELD_VARIABLE">field</info> + <info textAttributesKey="KOTLIN_PACKAGE_PROPERTY"><info textAttributesKey="KOTLIN_MUTABLE_VARIABLE">x</info></info>
 }
 
-class <info textAttributesKey="KOTLIN_CLASS">Foo</info>(val <info textAttributesKey="KOTLIN_INSTANCE_PROPERTY">a</info> : <info textAttributesKey="KOTLIN_CLASS">Int</info>, <info textAttributesKey="KOTLIN_PARAMETER">b</info> : <info textAttributesKey="KOTLIN_CLASS">String</info>) {
+class <info textAttributesKey="KOTLIN_CLASS">Foo</info>(
+    val <info textAttributesKey="KOTLIN_INSTANCE_PROPERTY">a</info> : <info textAttributesKey="KOTLIN_CLASS">Int</info>,
+    <info textAttributesKey="KOTLIN_PARAMETER">b</info> : <info textAttributesKey="KOTLIN_CLASS">String</info>,
+    var <info textAttributesKey="KOTLIN_MUTABLE_VARIABLE"><info textAttributesKey="KOTLIN_INSTANCE_PROPERTY">c</info></info> : <info textAttributesKey="KOTLIN_CLASS">String</info>
+) {
   <info>init</info> {
     <info textAttributesKey="KOTLIN_PARAMETER">b</info>
   }

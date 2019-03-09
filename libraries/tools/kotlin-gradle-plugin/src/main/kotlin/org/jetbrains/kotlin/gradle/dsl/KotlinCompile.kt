@@ -19,24 +19,6 @@ package org.jetbrains.kotlin.gradle.dsl
 import groovy.lang.Closure
 import org.gradle.api.Task
 
-interface CompilerArgumentAware {
-    val serializedCompilerArguments: List<String>
-    val defaultSerializedCompilerArguments: List<String>
-}
-
-interface KotlinCompile<T : KotlinCommonOptions> : Task, CompilerArgumentAware {
-    val kotlinOptions: T
-
-    fun kotlinOptions(fn: T.() -> Unit) {
-        kotlinOptions.fn()
-    }
-
-    fun kotlinOptions(fn: Closure<*>) {
-        fn.delegate = kotlinOptions
-        fn.call()
-    }
-}
-
 interface KotlinJsCompile : KotlinCompile<KotlinJsOptions>
 
 interface KotlinJvmCompile : KotlinCompile<KotlinJvmOptions>

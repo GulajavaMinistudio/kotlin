@@ -20,10 +20,12 @@ import com.google.common.collect.LinkedListMultimap
 import org.jetbrains.kotlin.codegen.optimization.common.isMeaningful
 import org.jetbrains.org.objectweb.asm.tree.*
 import java.util.*
+import kotlin.collections.HashSet
+import kotlin.collections.LinkedHashSet
 
 abstract class CoveringTryCatchNodeProcessor(parameterSize: Int) {
-    val tryBlocksMetaInfo: IntervalMetaInfo<TryCatchBlockNodeInfo> = IntervalMetaInfo()
-    val localVarsMetaInfo: IntervalMetaInfo<LocalVarNodeWrapper> = IntervalMetaInfo()
+    val tryBlocksMetaInfo: IntervalMetaInfo<TryCatchBlockNodeInfo> = IntervalMetaInfo(this)
+    val localVarsMetaInfo: IntervalMetaInfo<LocalVarNodeWrapper> = IntervalMetaInfo(this)
 
     var nextFreeLocalIndex: Int = parameterSize
         private set
@@ -84,30 +86,37 @@ abstract class CoveringTryCatchNodeProcessor(parameterSize: Int) {
     }
 }
 
-class IntervalMetaInfo<T : SplittableInterval<T>> {
+class IntervalMetaInfo<T : SplittableInterval<T>>(private val processor: CoveringTryCatchNodeProcessor) {
     val intervalStarts = LinkedListMultimap.create<LabelNode, T>()
     val intervalEnds = LinkedListMultimap.create<LabelNode, T>()
     val allIntervals: ArrayList<T> = arrayListOf()
     val currentIntervals: MutableSet<T> = linkedSetOf()
 
     fun addNewInterval(newInfo: T) {
+        newInfo.verify(processor)
         intervalStarts.put(newInfo.startLabel, newInfo)
         intervalEnds.put(newInfo.endLabel, newInfo)
         allIntervals.add(newInfo)
     }
 
     private fun remapStartLabel(oldStart: LabelNode, remapped: T) {
+        remapped.verify(processor)
         intervalStarts.remove(oldStart, remapped)
         intervalStarts.put(remapped.startLabel, remapped)
     }
 
     private fun remapEndLabel(oldEnd: LabelNode, remapped: T) {
+        remapped.verify(processor)
         intervalEnds.remove(oldEnd, remapped)
         intervalEnds.put(remapped.endLabel, remapped)
     }
 
     fun splitCurrentIntervals(by: Interval, keepStart: Boolean): List<SplitPair<T>> {
         return currentIntervals.map { split(it, by, keepStart) }
+    }
+
+    fun splitAndRemoveCurrentIntervals(by: Interval, keepStart: Boolean) {
+        currentIntervals.toList().forEach { splitAndRemoveIntervalFromCurrents(it, by, keepStart) }
     }
 
     fun processCurrent(curIns: LabelNode, directOrder: Boolean) {
@@ -126,15 +135,14 @@ class IntervalMetaInfo<T : SplittableInterval<T>> {
         val split = interval.split(by, keepStart)
         if (!keepStart) {
             remapStartLabel(split.newPart.startLabel, split.patchedPart)
-        }
-        else {
+        } else {
             remapEndLabel(split.newPart.endLabel, split.patchedPart)
         }
         addNewInterval(split.newPart)
         return split
     }
 
-    fun splitAndRemoveInterval(interval: T, by: Interval, keepStart: Boolean): SplitPair<T> {
+    fun splitAndRemoveIntervalFromCurrents(interval: T, by: Interval, keepStart: Boolean): SplitPair<T> {
         val splitPair = split(interval, by, keepStart)
         val removed = currentIntervals.remove(splitPair.patchedPart)
         assert(removed) { "Wrong interval structure: $splitPair" }
@@ -142,7 +150,7 @@ class IntervalMetaInfo<T : SplittableInterval<T>> {
     }
 
     private fun getInterval(curIns: LabelNode, isOpen: Boolean) =
-            if (isOpen) intervalStarts.get(curIns) else intervalEnds.get(curIns)
+        if (isOpen) intervalStarts.get(curIns) else intervalEnds.get(curIns)
 }
 
 fun TryCatchBlockNode.isMeaningless() = SimpleInterval(start, end).isMeaningless()
@@ -184,15 +192,16 @@ class LocalVarNodeWrapper(val node: LocalVariableNode) : Interval, SplittableInt
             val oldEnd = endLabel
             node.end = splitBy.startLabel
             Pair(splitBy.endLabel, oldEnd)
-        }
-        else {
+        } else {
             val oldStart = startLabel
             node.start = splitBy.endLabel
             Pair(oldStart, splitBy.startLabel)
         }
 
-        return SplitPair(this, LocalVarNodeWrapper(
+        return SplitPair(
+            this, LocalVarNodeWrapper(
                 LocalVariableNode(node.name, node.desc, node.signature, newPartInterval.first, newPartInterval.second, node.index)
-        ))
+            )
+        )
     }
 }

@@ -21,6 +21,7 @@ import org.jetbrains.kotlin.cli.common.arguments.K2JVMCompilerArguments
 import org.jetbrains.kotlin.incremental.utils.TestCompilationResult
 import org.jetbrains.kotlin.incremental.utils.TestICReporter
 import org.jetbrains.kotlin.incremental.utils.TestMessageCollector
+import org.jetbrains.kotlin.test.KotlinTestUtils
 import java.io.ByteArrayOutputStream
 import java.io.File
 import javax.tools.ToolProvider
@@ -56,7 +57,8 @@ abstract class AbstractIncrementalJvmCompilerRunnerTest : AbstractIncrementalCom
         }
         val args = arrayOf("-cp", javaClasspath,
                            "-d", javaDestinationDir.canonicalPath,
-                           *javaSources.map { it.canonicalPath }.toTypedArray())
+                           *javaSources.map { it.canonicalPath }.toTypedArray()
+        )
 
         val err = ByteArrayOutputStream()
         val javac = ToolProvider.getSystemJavaCompiler()
@@ -68,14 +70,15 @@ abstract class AbstractIncrementalJvmCompilerRunnerTest : AbstractIncrementalCom
     }
 
     override fun createCompilerArguments(destinationDir: File, testDir: File): K2JVMCompilerArguments =
-            K2JVMCompilerArguments().apply {
-                moduleName = testDir.name
-                destination = destinationDir.path
-                classpath = compileClasspath
-            }
+        K2JVMCompilerArguments().apply {
+            moduleName = testDir.name
+            destination = destinationDir.path
+            classpath = compileClasspath
+        }
 
     private val compileClasspath =
-            listOf(File(bootstrapKotlincLib, "kotlin-stdlib.jar"))
-                    .map { it.canonicalPath }
-                    .joinToString(File.pathSeparator)
+        listOf(
+            kotlinStdlibJvm,
+            KotlinTestUtils.getAnnotationsJar()
+        ).joinToString(File.pathSeparator) { it.canonicalPath }
 }

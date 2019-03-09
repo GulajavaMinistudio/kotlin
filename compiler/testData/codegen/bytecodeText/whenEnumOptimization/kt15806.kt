@@ -1,3 +1,4 @@
+// IGNORE_BACKEND: JVM_IR
 
 private fun Any?.doTheThing(): String {
     when (this) {
@@ -24,4 +25,4 @@ fun box(): String {
     return "O".doTheThing() + Level.K.doTheThing()
 }
 
-// 1 LOOKUPSWITCH
+// 1 TABLESWITCH

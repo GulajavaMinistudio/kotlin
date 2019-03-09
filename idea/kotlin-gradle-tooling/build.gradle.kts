@@ -1,17 +1,16 @@
 
 description = "Kotlin Gradle Tooling support"
 
-apply { plugin("kotlin") }
+plugins {
+    kotlin("jvm")
+    id("jps-compatible")
+}
 
 dependencies {
-    compile(projectDist(":kotlin-stdlib"))
+    compile(kotlinStdlib())
     compile(project(":compiler:cli-common"))
-    compile(ideaSdkDeps("gradle-tooling-api",
-                        "gradle-tooling-extension-api",
-                        "gradle",
-                        "gradle-core",
-                        "gradle-base-services-groovy",
-                        subdir = "plugins/gradle/lib"))
+    compile(intellijPluginDep("gradle"))
+    compileOnly(intellijDep()) { includeJars("slf4j-api-1.7.25") }
 }
 
 sourceSets {

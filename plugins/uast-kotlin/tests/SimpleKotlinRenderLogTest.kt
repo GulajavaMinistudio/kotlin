@@ -25,9 +25,13 @@ class SimpleKotlinRenderLogTest : AbstractKotlinRenderLogTest() {
 
     @Test fun testStringTemplate() = doTest("StringTemplate")
 
+    @Test fun testStringTemplateComplex() = doTest("StringTemplateComplex")
+
     @Test fun testQualifiedConstructorCall() = doTest("QualifiedConstructorCall")
 
-    @Test fun testPropertyDelegate() = doTest("PropertyDelegate") { testName, file -> check(testName, file, false) }
+    @Test fun testPropertyDelegate() = doTest("PropertyDelegate")
+
+    @Test fun testLocalVariableWithAnnotation() = doTest("LocalVariableWithAnnotation")
 
     @Test fun testPropertyWithAnnotation() = doTest("PropertyWithAnnotation")
 
@@ -45,10 +49,48 @@ class SimpleKotlinRenderLogTest : AbstractKotlinRenderLogTest() {
 
     @Test fun testParametersWithDefaultValues() = doTest("ParametersWithDefaultValues")
 
-    @Test fun testUnexpectedContainer() = doTest("UnexpectedContainerException") { testName, file -> check(testName, file, false) }
+    @Test
+    fun testUnexpectedContainer() = doTest("UnexpectedContainerException")
 
-    @Test fun testWhenStringLiteral() = doTest("WhenStringLiteral") { testName, file -> check(testName, file, false) }
+    @Test
+    fun testWhenStringLiteral() = doTest("WhenStringLiteral")
 
     @Test
     fun testWhenAndDestructing() = doTest("WhenAndDestructing") { testName, file -> check(testName, file, false) }
+
+    @Test
+    fun testSuperCalls() = doTest("SuperCalls")
+
+    @Test
+    fun testConstructors() = doTest("Constructors")
+
+    @Test
+    fun testClassAnnotation() = doTest("ClassAnnotation")
+
+    @Test
+    fun testReceiverFun() = doTest("ReceiverFun")
+
+    @Test
+    fun testAnonymous() = doTest("Anonymous")
+
+    @Test
+    fun testAnnotationComplex() = doTest("AnnotationComplex")
+
+    @Test
+    fun testParametersDisorder() = doTest("ParametersDisorder") { testName, file ->
+        // disabled due to inconsistent parents for 2-receivers call (KT-22344)
+        check(testName, file, false)
+    }
+
+    @Test
+    fun testLambdas() = doTest("Lambdas")
+
+    @Test
+    fun testTypeReferences() = doTest("TypeReferences")
+
+    @Test
+    fun testDelegate() = doTest("Delegate")
+
+    @Test
+    fun testConstructorDelegate() = doTest("ConstructorDelegate")
 }

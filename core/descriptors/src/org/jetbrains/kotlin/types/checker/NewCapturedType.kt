@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,8 +20,11 @@ import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.descriptors.ClassifierDescriptor
 import org.jetbrains.kotlin.descriptors.TypeParameterDescriptor
 import org.jetbrains.kotlin.descriptors.annotations.Annotations
+import org.jetbrains.kotlin.resolve.calls.inference.CapturedTypeConstructor
 import org.jetbrains.kotlin.resolve.scopes.MemberScope
 import org.jetbrains.kotlin.types.*
+import org.jetbrains.kotlin.types.model.CaptureStatus
+import org.jetbrains.kotlin.types.model.CapturedTypeMarker
 import org.jetbrains.kotlin.types.typeUtil.asTypeProjection
 import org.jetbrains.kotlin.types.typeUtil.builtIns
 import org.jetbrains.kotlin.utils.DO_NOTHING_2
@@ -30,7 +33,7 @@ import org.jetbrains.kotlin.utils.DO_NOTHING_2
 // null means that type should be leaved as is
 fun prepareArgumentTypeRegardingCaptureTypes(argumentType: UnwrappedType): UnwrappedType? {
     val simpleType = NewKotlinTypeChecker.transformToNewType(argumentType.lowerIfFlexible())
-    if (simpleType.constructor is IntersectionTypeConstructor){
+    if (simpleType.constructor is IntersectionTypeConstructor) {
         var changed = false
         val preparedSuperTypes = simpleType.constructor.supertypes.map {
             prepareArgumentTypeRegardingCaptureTypes(it.unwrap())?.apply { changed = true } ?: it.unwrap()
@@ -39,7 +42,7 @@ fun prepareArgumentTypeRegardingCaptureTypes(argumentType: UnwrappedType): Unwra
         return intersectTypes(preparedSuperTypes).makeNullableAsSpecified(simpleType.isMarkedNullable)
     }
     if (simpleType is NewCapturedType) {
-        // todo may be we should respect flexible capture types also...
+        // todo may be we should respect flexible/definitelyNotNull captured types also...
         return simpleType.constructor.supertypes.takeIf { it.isNotEmpty() }?.let {
             intersectTypes(it).makeNullableAsSpecified(simpleType.isMarkedNullable)
         } ?: argumentType.builtIns.nullableAnyType
@@ -68,17 +71,16 @@ fun captureFromExpression(type: SimpleType): UnwrappedType? {
 
 // this function suppose that input type is simple classifier type
 fun captureFromArguments(
-        type: SimpleType,
-        status: CaptureStatus,
-        acceptNewCapturedType: ((argumentIndex: Int, NewCapturedType) -> Unit) = DO_NOTHING_2
+    type: SimpleType,
+    status: CaptureStatus,
+    acceptNewCapturedType: ((argumentIndex: Int, NewCapturedType) -> Unit) = DO_NOTHING_2
 ): SimpleType? {
     if (type.arguments.size != type.constructor.parameters.size) return null
 
     val arguments = type.arguments
     if (arguments.all { it.projectionKind == Variance.INVARIANT }) return null
 
-    val newArguments = arguments.map {
-        projection ->
+    val newArguments = arguments.map { projection ->
         if (projection.projectionKind == Variance.INVARIANT) return@map projection
 
         val lowerType = if (!projection.isStarProjection && projection.projectionKind == Variance.IN_VARIANCE) {
@@ -109,12 +111,6 @@ fun captureFromArguments(
     return KotlinTypeFactory.simpleType(type.annotations, type.constructor, newArguments, type.isMarkedNullable)
 }
 
-enum class CaptureStatus {
-    FOR_SUBTYPING,
-    FOR_INCORPORATION,
-    FROM_EXPRESSION
-}
-
 /**
  * Now [lowerType] is not null only for in projections.
  * Example: `Inv<in String>` For `in String` we create CapturedType with [lowerType] = String.
@@ -124,12 +120,12 @@ enum class CaptureStatus {
  *
  */
 class NewCapturedType(
-        val captureStatus: CaptureStatus,
-        override val constructor: NewCapturedTypeConstructor,
-        val lowerType: UnwrappedType?, // todo check lower type for nullable captured types
-        override val annotations: Annotations = Annotations.EMPTY,
-        override val isMarkedNullable: Boolean = false
-): SimpleType() {
+    val captureStatus: CaptureStatus,
+    override val constructor: NewCapturedTypeConstructor,
+    val lowerType: UnwrappedType?, // todo check lower type for nullable captured types
+    override val annotations: Annotations = Annotations.EMPTY,
+    override val isMarkedNullable: Boolean = false
+) : SimpleType(), CapturedTypeMarker {
     internal constructor(captureStatus: CaptureStatus, lowerType: UnwrappedType?, projection: TypeProjection) :
             this(captureStatus, NewCapturedTypeConstructor(projection), lowerType)
 
@@ -139,13 +135,14 @@ class NewCapturedType(
         get() = ErrorUtils.createErrorScope("No member resolution should be done on captured type!", true)
 
     override fun replaceAnnotations(newAnnotations: Annotations) =
-            NewCapturedType(captureStatus, constructor, lowerType, newAnnotations, isMarkedNullable)
+        NewCapturedType(captureStatus, constructor, lowerType, newAnnotations, isMarkedNullable)
 
     override fun makeNullableAsSpecified(newNullability: Boolean) =
-            NewCapturedType(captureStatus, constructor, lowerType, annotations, newNullability)
+        NewCapturedType(captureStatus, constructor, lowerType, annotations, newNullability)
 }
 
-class NewCapturedTypeConstructor(val projection: TypeProjection, private var supertypes: List<UnwrappedType>? = null) : TypeConstructor {
+class NewCapturedTypeConstructor(override val projection: TypeProjection, private var supertypes: List<UnwrappedType>? = null) :
+    CapturedTypeConstructor {
     fun initializeSupertypes(supertypes: List<UnwrappedType>) {
         assert(this.supertypes == null) {
             "Already initialized! oldValue = ${this.supertypes}, newValue = $supertypes"

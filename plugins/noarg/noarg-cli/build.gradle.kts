@@ -1,7 +1,10 @@
 
 description = "Kotlin NoArg Compiler Plugin"
 
-apply { plugin("kotlin") }
+plugins {
+    kotlin("jvm")
+    id("jps-compatible")
+}
 
 dependencies {
     compileOnly(project(":compiler:frontend"))
@@ -9,23 +12,34 @@ dependencies {
     compileOnly(project(":compiler:backend"))
     compileOnly(project(":compiler:util"))
     compileOnly(project(":compiler:plugin-api"))
-    runtime(projectRuntimeJar(":kotlin-compiler"))
-    runtime(projectDist(":kotlin-stdlib"))
+    compileOnly(intellijCoreDep()) { includeJars("intellij-core") }
+    compileOnly(intellijDep()) { includeJars("asm-all", rootProject = rootProject) }
+    runtime(kotlinStdlib())
+    testRuntimeOnly(intellijDep()) {
+        includeJars("guava", rootProject = rootProject)
+    }
+    testRuntimeOnly(projectRuntimeJar(":kotlin-compiler"))
+    testCompile(project(":compiler:backend"))
+    testCompile(project(":compiler:cli"))
+    testCompile(projectTests(":compiler:tests-common"))
+    testCompile(commonDep("junit:junit"))
 }
 
 sourceSets {
     "main" { projectDefault() }
-    "test" {}
+    "test" { projectDefault() }
 }
 
-val jar = runtimeJar {
-    from(fileTree("$projectDir/src")) { include("META-INF/**") }
-}
+val jar = runtimeJar {}
+
+testsJar {}
 
 dist(targetName = the<BasePluginConvention>().archivesBaseName.removePrefix("kotlin-") + ".jar")
 
 ideaPlugin {
     from(jar)
-    rename("^kotlin-", "")
 }
 
+projectTest {
+    workingDir = rootDir
+}

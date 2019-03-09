@@ -20,22 +20,34 @@ import com.intellij.openapi.module.Module
 import com.intellij.openapi.roots.CompilerModuleExtension
 import org.jetbrains.jps.util.JpsPathUtil
 import org.jetbrains.kotlin.idea.facet.KotlinFacet
-import org.jetbrains.kotlin.idea.facet.implementingModules
-import org.jetbrains.kotlin.idea.project.TargetPlatformDetector
-import org.jetbrains.kotlin.js.resolve.JsPlatform
-import org.jetbrains.kotlin.resolve.TargetPlatform
+import org.jetbrains.kotlin.idea.framework.isGradleModule
+import org.jetbrains.kotlin.idea.project.platform
+import org.jetbrains.kotlin.platform.impl.isJavaScript
+import org.jetbrains.plugins.gradle.settings.GradleSystemRunningSettings
 
 val Module.jsTestOutputFilePath: String?
     get() {
-        (KotlinFacet.get(this)?.configuration?.settings?.testOutputPath)?.let { return it }
+        KotlinFacet.get(this)?.configuration?.settings?.testOutputPath?.let { return it }
+
+        if (!shouldUseJpsOutput) return null
 
         val compilerExtension = CompilerModuleExtension.getInstance(this)
         val outputDir = compilerExtension?.compilerOutputUrlForTests ?: return null
         return JpsPathUtil.urlToPath("$outputDir/${name}_test.js")
     }
 
-fun Module.jsOrJsImpl() = when (TargetPlatformDetector.getPlatform(this)) {
-    is TargetPlatform.Common -> implementingModules.firstOrNull { TargetPlatformDetector.getPlatform(it) is JsPlatform }
-    is JsPlatform -> this
-    else -> null
-}
+val Module.jsProductionOutputFilePath: String?
+    get() {
+        KotlinFacet.get(this)?.configuration?.settings?.productionOutputPath?.let { return it }
+
+        if (!shouldUseJpsOutput) return null
+
+        val compilerExtension = CompilerModuleExtension.getInstance(this)
+        val outputDir = compilerExtension?.compilerOutputUrl ?: return null
+        return JpsPathUtil.urlToPath("$outputDir/$name.js")
+    }
+
+fun Module.asJsModule(): Module? = takeIf { it.platform.isJavaScript }
+
+val Module.shouldUseJpsOutput: Boolean
+    get() = !(isGradleModule() && GradleSystemRunningSettings.getInstance().isUseGradleAwareMake)

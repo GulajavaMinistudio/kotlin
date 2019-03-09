@@ -1,14 +1,15 @@
 
-apply { plugin("kotlin") }
-
-jvmTarget = "1.6"
+plugins {
+    kotlin("jvm")
+    id("jps-compatible")
+}
 
 dependencies {
     compile(project(":compiler:util"))
     compile(project(":compiler:frontend"))
     compile(project(":compiler:serialization"))
     compile(project(":js:js.ast"))
-    compile(ideaSdkCoreDeps("intellij-core"))
+    compileOnly(intellijCoreDep()) { includeJars("intellij-core") }
 }
 
 sourceSets {

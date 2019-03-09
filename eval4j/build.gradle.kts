@@ -1,15 +1,17 @@
 
-apply { plugin("kotlin") }
+plugins {
+    kotlin("jvm")
+    id("jps-compatible")
+}
 
 dependencies {
-    compile(projectDist(":kotlin-stdlib"))
-    compile(projectDist(":kotlin-reflect"))
+    compile(kotlinStdlib())
     compile(project(":compiler:backend"))
-    compile(ideaSdkDeps("asm-all"))
-//    compile(files(PathUtil.getJdkClassesRootsFromCurrentJre())) // TODO: make this one work instead of the nex one, since it contains more universal logic
-    compile(files("${System.getProperty("java.home")}/../lib/tools.jar"))
-    testCompile(projectDist(":kotlin-test:kotlin-test-junit"))
+    compile(files(toolsJar()))
+    compileOnly(intellijDep()) { includeJars("asm-all", rootProject = rootProject) }
+    testCompile(project(":kotlin-test:kotlin-test-junit"))
     testCompile(commonDep("junit:junit"))
+    testCompile(intellijDep()) { includeJars("asm-all", rootProject = rootProject) }
 }
 
 sourceSets {
@@ -18,6 +20,6 @@ sourceSets {
 }
 
 projectTest {
-    dependsOnTaskIfExistsRec("dist", project = rootProject)
+    dependsOn(":dist")
     workingDir = rootDir
 }
