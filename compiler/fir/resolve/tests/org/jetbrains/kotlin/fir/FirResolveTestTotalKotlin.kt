@@ -65,10 +65,10 @@ class FirResolveTestTotalKotlin : AbstractFirResolveWithSessionTestCase() {
 
         val scope = ProjectScope.getContentScope(project)
         val session = createSession(project, scope)
-        val builder = RawFirBuilder(session, stubMode = true)
+        val builder = RawFirBuilder(session, stubMode = false)
 
         val totalTransformer = FirTotalResolveTransformer()
-        val firFiles = ktFiles.map {
+        val firFiles = ktFiles.toList().progress("Loading FIR").map {
             val firFile = builder.buildFirFile(it)
             (session.service<FirProvider>() as FirProviderImpl).recordFile(firFile)
             firFile
@@ -77,6 +77,6 @@ class FirResolveTestTotalKotlin : AbstractFirResolveWithSessionTestCase() {
 
         println("Raw FIR up, files: ${firFiles.size}")
 
-        doFirResolveTestBench(firFiles, totalTransformer.transformers)
+        doFirResolveTestBench(firFiles, totalTransformer.transformers, withProgress = true)
     }
 }

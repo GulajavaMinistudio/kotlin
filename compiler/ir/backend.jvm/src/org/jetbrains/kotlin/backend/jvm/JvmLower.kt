@@ -54,7 +54,7 @@ private val propertiesPhase = makeIrFilePhase(
     stickyPostconditions = setOf((PropertiesLowering)::checkNoProperties)
 )
 
-internal val jvmPhases = namedIrFilePhase(
+val jvmPhases = namedIrFilePhase(
     name = "IrLowering",
     description = "IR lowering",
     lower = expectDeclarationsRemovingPhase then
@@ -66,6 +66,7 @@ internal val jvmPhases = namedIrFilePhase(
 
             moveCompanionObjectFieldsPhase then
             constPhase then
+            propertyReferencePhase then
             propertiesToFieldsPhase then
             propertiesPhase then
             renameFieldsPhase then
@@ -101,8 +102,10 @@ internal val jvmPhases = namedIrFilePhase(
             tailrecPhase then
             toArrayPhase then
             jvmTypeOperatorLoweringPhase then
+            foldConstantLoweringPhase then
             flattenStringConcatenationPhase then
             jvmBuiltinOptimizationLoweringPhase then
+            additionalClassAnnotationPhase then
 
             makePatchParentsPhase(3)
 )

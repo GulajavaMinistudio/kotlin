@@ -194,6 +194,11 @@ public class ClassFileToSourceStubConverterTestGenerated extends AbstractClassFi
         runTest("plugins/kapt3/kapt3-compiler/testData/converter/javaKeywordsInPackageNames.kt");
     }
 
+    @TestMetadata("javadoc.kt")
+    public void testJavadoc() throws Exception {
+        runTest("plugins/kapt3/kapt3-compiler/testData/converter/javadoc.kt");
+    }
+
     @TestMetadata("jvmOverloads.kt")
     public void testJvmOverloads() throws Exception {
         runTest("plugins/kapt3/kapt3-compiler/testData/converter/jvmOverloads.kt");
@@ -352,6 +357,11 @@ public class ClassFileToSourceStubConverterTestGenerated extends AbstractClassFi
     @TestMetadata("nonExistentClassWIthoutCorrection.kt")
     public void testNonExistentClassWIthoutCorrection() throws Exception {
         runTest("plugins/kapt3/kapt3-compiler/testData/converter/nonExistentClassWIthoutCorrection.kt");
+    }
+
+    @TestMetadata("outProjection.kt")
+    public void testOutProjection() throws Exception {
+        runTest("plugins/kapt3/kapt3-compiler/testData/converter/outProjection.kt");
     }
 
     @TestMetadata("primitiveTypes.kt")

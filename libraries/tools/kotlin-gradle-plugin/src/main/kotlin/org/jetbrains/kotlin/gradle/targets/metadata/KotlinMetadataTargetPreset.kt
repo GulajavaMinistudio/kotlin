@@ -7,23 +7,18 @@
 package org.jetbrains.kotlin.gradle.plugin.mpp
 
 import org.gradle.api.Project
-import org.gradle.api.internal.file.FileResolver
-import org.gradle.internal.reflect.Instantiator
 import org.jetbrains.kotlin.gradle.dsl.KotlinCompile
 import org.jetbrains.kotlin.gradle.dsl.kotlinExtension
 import org.jetbrains.kotlin.gradle.plugin.*
 import org.jetbrains.kotlin.gradle.plugin.sources.applyLanguageSettingsToKotlinTask
+import org.jetbrains.kotlin.gradle.targets.metadata.KotlinMetadataTargetConfigurator
 import org.jetbrains.kotlin.gradle.tasks.KotlinTasksProvider
 
 class KotlinMetadataTargetPreset(
     project: Project,
-    instantiator: Instantiator,
-    fileResolver: FileResolver,
     kotlinPluginVersion: String
 ) : KotlinOnlyTargetPreset<KotlinCommonCompilation>(
     project,
-    instantiator,
-    fileResolver,
     kotlinPluginVersion
 ) {
     override fun getName(): String = PRESET_NAME
@@ -36,17 +31,12 @@ class KotlinMetadataTargetPreset(
     override val platformType: KotlinPlatformType
         get() = KotlinPlatformType.common
 
-    override fun buildCompilationProcessor(compilation: KotlinCommonCompilation): KotlinSourceSetProcessor<*> {
-        val tasksProvider = KotlinTasksProvider(compilation.target.targetName)
-        return KotlinCommonSourceSetProcessor(project, compilation, tasksProvider, kotlinPluginVersion)
-    }
-
     companion object {
         const val PRESET_NAME = "metadata"
     }
 
     override fun createKotlinTargetConfigurator(): KotlinTargetConfigurator<KotlinCommonCompilation> =
-        KotlinTargetConfigurator(createDefaultSourceSets = false, createTestCompilation = false)
+        KotlinMetadataTargetConfigurator(kotlinPluginVersion)
 
     override fun createTarget(name: String): KotlinOnlyTarget<KotlinCommonCompilation> =
         super.createTarget(name).apply {

@@ -7,37 +7,25 @@ package org.jetbrains.kotlin.gradle.plugin
 
 import org.gradle.api.Project
 import org.gradle.api.Task
-import org.gradle.api.artifacts.*
+import org.gradle.api.artifacts.Configuration
+import org.gradle.api.artifacts.Dependency
+import org.gradle.api.artifacts.PublishArtifact
 import org.gradle.api.artifacts.type.ArtifactTypeDefinition
 import org.gradle.api.attributes.Usage
 import org.gradle.api.attributes.Usage.USAGE_ATTRIBUTE
 import org.gradle.api.file.FileCollection
 import org.gradle.api.internal.artifacts.ArtifactAttributes
-import org.gradle.api.internal.artifacts.publish.DefaultPublishArtifact
-import org.gradle.api.internal.plugins.DefaultArtifactPublicationSet
 import org.gradle.api.internal.plugins.DslObject
 import org.gradle.api.plugins.BasePlugin
 import org.gradle.api.plugins.JavaBasePlugin
-import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.Delete
-import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.bundling.Jar
 import org.gradle.api.tasks.testing.Test
 import org.gradle.language.base.plugins.LifecycleBasePlugin
 import org.gradle.language.jvm.tasks.ProcessResources
-import org.jetbrains.kotlin.cli.common.arguments.CommonCompilerArguments
-import org.jetbrains.kotlin.gradle.dsl.KotlinNativeBinaryContainer
 import org.jetbrains.kotlin.gradle.dsl.kotlinExtension
-import org.jetbrains.kotlin.gradle.plugin.KotlinCompilation.Companion.MAIN_COMPILATION_NAME
-import org.jetbrains.kotlin.gradle.plugin.KotlinCompilation.Companion.TEST_COMPILATION_NAME
 import org.jetbrains.kotlin.gradle.plugin.mpp.*
-import org.jetbrains.kotlin.gradle.tasks.AbstractKotlinNativeCompile
-import org.jetbrains.kotlin.gradle.tasks.CInteropProcess
-import org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile
-import org.jetbrains.kotlin.gradle.tasks.KotlinNativeLink
 import org.jetbrains.kotlin.gradle.utils.lowerCamelCaseName
-import java.io.File
-import java.util.*
 import java.util.concurrent.Callable
 
 abstract class AbstractKotlinTargetConfigurator<KotlinTargetType : KotlinTarget>(
@@ -64,7 +52,7 @@ abstract class AbstractKotlinTargetConfigurator<KotlinTargetType : KotlinTarget>
         cleanTask.delete(kotlinCompilation.output.allOutputs)
     }
 
-    protected fun configureCompilations(platformTarget: KotlinTargetType) {
+    protected open fun configureCompilations(platformTarget: KotlinTargetType) {
         val project = platformTarget.project
         val main = platformTarget.compilations.create(KotlinCompilation.MAIN_COMPILATION_NAME)
 
@@ -313,13 +301,26 @@ internal val KotlinCompilation<*>.deprecatedCompileConfigurationName: String
 internal val KotlinCompilationToRunnableFiles<*>.deprecatedRuntimeConfigurationName: String
     get() = disambiguateName("runtime")
 
-open class KotlinTargetConfigurator<KotlinCompilationType : KotlinCompilation<*>>(
+abstract class KotlinTargetConfigurator<KotlinCompilationType : KotlinCompilation<*>>(
     createDefaultSourceSets: Boolean,
-    createTestCompilation: Boolean
+    createTestCompilation: Boolean,
+    val kotlinPluginVersion: String
 ) : AbstractKotlinTargetConfigurator<KotlinOnlyTarget<KotlinCompilationType>>(
     createDefaultSourceSets,
     createTestCompilation
 ) {
+    internal abstract fun buildCompilationProcessor(compilation: KotlinCompilationType): KotlinSourceSetProcessor<*>
+
+    override fun configureCompilations(platformTarget: KotlinOnlyTarget<KotlinCompilationType>) {
+        super.configureCompilations(platformTarget)
+
+        platformTarget.compilations.all { compilation ->
+            buildCompilationProcessor(compilation).run()
+            if (compilation.name == KotlinCompilation.MAIN_COMPILATION_NAME) {
+                sourcesJarTask(compilation, platformTarget.targetName, platformTarget.targetName.toLowerCase())
+            }
+        }
+    }
 
     override fun configureArchivesAndComponent(target: KotlinOnlyTarget<KotlinCompilationType>) {
         val project = target.project
@@ -359,7 +360,7 @@ open class KotlinTargetConfigurator<KotlinCompilationType : KotlinCompilation<*>
         val testCompilation = target.compilations.findByName(KotlinCompilation.TEST_COMPILATION_NAME) as? KotlinCompilationToRunnableFiles<*>
             ?: return // Otherwise, there is no runtime classpath
 
-        target.project.tasks.create(lowerCamelCaseName(target.targetName, testTaskNameSuffix), Test::class.java).apply {
+        target.project.tasks.create(lowerCamelCaseName(target.disambiguationClassifier, testTaskNameSuffix), Test::class.java).apply {
             project.afterEvaluate {
                 // use afterEvaluate to override the JavaPlugin defaults for Test tasks
                 conventionMapping.map("testClassesDirs") { testCompilation.output.classesDirs }

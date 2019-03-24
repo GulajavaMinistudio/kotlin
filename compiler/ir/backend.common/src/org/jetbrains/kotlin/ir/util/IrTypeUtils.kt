@@ -81,3 +81,7 @@ private inline fun IrType.isTypeFromKotlinPackage(namePredicate: (Name) -> Boole
 }
 
 fun IrType.isPrimitiveArray() = isTypeFromKotlinPackage { it in FQ_NAMES.primitiveArrayTypeShortNames }
+
+fun IrType.getPrimitiveArrayElementType() = (this as? IrSimpleType)?.let {
+    (it.classifier.owner as? IrClass)?.fqNameWhenAvailable?.toUnsafe()?.let { fqn -> FQ_NAMES.arrayClassFqNameToPrimitiveType[fqn] }
+}

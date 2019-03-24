@@ -100,7 +100,7 @@ internal class CallableReferenceLowering(val context: JvmBackendContext) : FileL
                     val vararg = IrVarargImpl(
                         UNDEFINED_OFFSET, UNDEFINED_OFFSET,
                         context.ir.symbols.array.typeWith(),
-                        context.ir.symbols.any.typeWith(),
+                        context.irBuiltIns.anyClass.typeWith(),
                         (0 until argumentsCount).map { i -> expression.getValueArgument(i)!! }
                     )
                     val invokeFun = context.getIrClass(FqName("kotlin.jvm.functions.FunctionN")).owner.declarations.single {
@@ -346,6 +346,8 @@ internal class CallableReferenceLowering(val context: JvmBackendContext) : FileL
                 val function = this
                 parent = functionReferenceClass
                 overriddenSymbols.add(superFunction.symbol)
+                annotations.addAll(callee.annotations)
+
                 dispatchReceiverParameter = functionReferenceClass.thisReceiver?.copyTo(function)
 
                 val unboundArgsSet = unboundCalleeParameters.toSet()

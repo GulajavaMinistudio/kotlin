@@ -21,7 +21,6 @@ import org.jetbrains.kotlin.backend.common.deepCopyWithVariables
 import org.jetbrains.kotlin.backend.common.descriptors.*
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.ir.IrElement
-import org.jetbrains.kotlin.ir.builders.IrStatementsBuilder
 import org.jetbrains.kotlin.ir.builders.Scope
 import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.declarations.impl.IrConstructorImpl
@@ -39,10 +38,7 @@ import org.jetbrains.kotlin.ir.symbols.impl.IrValueParameterSymbolImpl
 import org.jetbrains.kotlin.ir.types.*
 import org.jetbrains.kotlin.ir.types.impl.IrSimpleTypeImpl
 import org.jetbrains.kotlin.ir.types.impl.makeTypeProjection
-import org.jetbrains.kotlin.ir.util.DumpIrTreeVisitor
-import org.jetbrains.kotlin.ir.util.defaultType
-import org.jetbrains.kotlin.ir.util.parentAsClass
-import org.jetbrains.kotlin.ir.util.patchDeclarationParents
+import org.jetbrains.kotlin.ir.util.*
 import org.jetbrains.kotlin.ir.visitors.IrElementVisitor
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
@@ -59,34 +55,6 @@ fun ir2stringWhole(ir: IrElement?, withDescriptors: Boolean = false): String {
     else
         ir?.accept(DumpIrTreeVisitor(strWriter), "")
     return strWriter.toString()
-}
-
-fun DeclarationDescriptor.createFakeOverrideDescriptor(owner: ClassDescriptor): DeclarationDescriptor? {
-    // We need to copy descriptors for vtable building, thus take only functions and properties.
-    return when (this) {
-        is CallableMemberDescriptor ->
-            copy(
-                /* newOwner      = */ owner,
-                /* modality      = */ modality,
-                /* visibility    = */ visibility,
-                /* kind          = */ CallableMemberDescriptor.Kind.FAKE_OVERRIDE,
-                /* copyOverrides = */ true
-            ).apply {
-                overriddenDescriptors += this@createFakeOverrideDescriptor
-            }
-        else -> null
-    }
-}
-
-fun FunctionDescriptor.createOverriddenDescriptor(owner: ClassDescriptor, final: Boolean = true): FunctionDescriptor {
-    return this.newCopyBuilder()
-        .setOwner(owner)
-        .setCopyOverrides(true)
-        .setModality(if (final) Modality.FINAL else Modality.OPEN)
-        .setDispatchReceiverParameter(owner.thisAsReceiverParameter)
-        .build()!!.apply {
-        overriddenDescriptors += this@createOverriddenDescriptor
-    }
 }
 
 fun IrClass.addSimpleDelegatingConstructor(
@@ -142,6 +110,15 @@ val IrSimpleFunction.isOverridableOrOverrides: Boolean get() = isOverridable || 
 
 val IrClass.isFinalClass: Boolean
     get() = modality == Modality.FINAL && kind != ClassKind.ENUM_CLASS
+
+// For an annotation, get the annotation class.
+fun IrCall.getAnnotationClass(): IrClass {
+    val callable = symbol.owner
+    assert(callable is IrConstructor) { "Constructor call expected, got ${ir2string(this)}" }
+    val annotationClass =  callable.parentAsClass
+    assert(annotationClass.isAnnotationClass) { "Annotation class expected, got ${ir2string(annotationClass)}" }
+    return annotationClass
+}
 
 val IrTypeParametersContainer.classIfConstructor get() = if (this is IrConstructor) parentAsClass else this
 
@@ -311,11 +288,6 @@ fun IrDeclarationContainer.addChild(declaration: IrDeclaration) {
     declaration.accept(SetDeclarationsParentVisitor, this)
 }
 
-fun <T: IrElement> T.setDeclarationsParent(parent: IrDeclarationParent): T {
-    accept(SetDeclarationsParentVisitor, parent)
-    return this
-}
-
 object SetDeclarationsParentVisitor : IrElementVisitor<Unit, IrDeclarationParent> {
     override fun visitElement(element: IrElement, data: IrDeclarationParent) {
         if (element !is IrDeclarationParent) {
@@ -336,14 +308,6 @@ val IrFunction.isStatic: Boolean
 val IrDeclaration.isTopLevel: Boolean
     get() = parent is IrPackageFragment
 
-fun <T : IrElement> IrStatementsBuilder<T>.irTemporaryWithWrappedDescriptor(
-    value: IrExpression,
-    nameHint: String? = null): IrVariable {
-    val temporary = scope.createTemporaryVariableWithWrappedDescriptor(value, nameHint)
-    +temporary
-    return temporary
-}
-
 
 fun Scope.createTemporaryVariableWithWrappedDescriptor(
     irExpression: IrExpression,
@@ -356,8 +320,6 @@ fun Scope.createTemporaryVariableWithWrappedDescriptor(
         irExpression, nameHint, isMutable, origin, descriptor
     ).apply { descriptor.bind(this) }
 }
-
-val IrFunction.isOverridable: Boolean get() = this is IrSimpleFunction && this.isOverridable
 
 fun IrClass.createImplicitParameterDeclarationWithWrappedDescriptor() {
     val thisReceiverDescriptor = WrappedReceiverParameterDescriptor()
@@ -385,13 +347,3 @@ fun isElseBranch(branch: IrBranch) = branch is IrElseBranch || ((branch.conditio
 fun IrSimpleFunction.isMethodOfAny() =
     ((valueParameters.size == 0 && name.asString().let { it == "hashCode" || it == "toString" }) ||
             (valueParameters.size == 1 && name.asString() == "equals" && valueParameters[0].type.isNullableAny()))
-
-val IrClass.fqName: FqName?
-    get() {
-        val parentFqName = when (val parent = parent) {
-            is IrPackageFragment -> parent.fqName
-            is IrClass -> parent.fqName
-            else -> return null
-        }
-        return parentFqName?.child(name)
-    }

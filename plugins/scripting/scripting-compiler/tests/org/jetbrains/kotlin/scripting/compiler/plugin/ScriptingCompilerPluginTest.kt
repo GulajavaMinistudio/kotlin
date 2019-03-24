@@ -18,11 +18,13 @@ import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinToJVMBytecodeCompiler
 import org.jetbrains.kotlin.cli.jvm.config.addJvmClasspathRoot
 import org.jetbrains.kotlin.cli.jvm.config.addJvmClasspathRoots
+import org.jetbrains.kotlin.compiler.plugin.AbstractCliOption
+import org.jetbrains.kotlin.compiler.plugin.ComponentRegistrar
 import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.config.JVMConfigurationKeys
-import org.jetbrains.kotlin.scripting.compiler.plugin.definitions.SCRIPT_DEFINITION_MARKERS_PATH
-import org.jetbrains.kotlin.scripting.compiler.plugin.definitions.discoverScriptTemplatesInClasspath
-import org.jetbrains.kotlin.scripting.compiler.plugin.definitions.loadScriptTemplatesFromClasspath
+import org.jetbrains.kotlin.scripting.shared.definitions.SCRIPT_DEFINITION_MARKERS_PATH
+import org.jetbrains.kotlin.scripting.shared.definitions.discoverScriptTemplatesInClasspath
+import org.jetbrains.kotlin.scripting.shared.definitions.loadScriptTemplatesFromClasspath
 import org.jetbrains.kotlin.test.ConfigurationKind
 import org.jetbrains.kotlin.test.KotlinTestUtils
 import org.jetbrains.kotlin.test.TestCaseWithTmpdir
@@ -35,7 +37,7 @@ import java.io.File
 class ScriptingCompilerPluginTest : TestCaseWithTmpdir() {
 
     companion object {
-        const val TEST_DATA_DIR = "plugins/scripting/scripting-cli/testData"
+        const val TEST_DATA_DIR = "plugins/scripting/scripting-compiler/testData"
     }
 
     private val kotlinPaths: KotlinPaths by lazy(LazyThreadSafetyMode.PUBLICATION) {
@@ -57,6 +59,7 @@ class ScriptingCompilerPluginTest : TestCaseWithTmpdir() {
             put(JVMConfigurationKeys.OUTPUT_DIRECTORY, destDir)
             confBody()
         }
+        configuration.add(ComponentRegistrar.PLUGIN_COMPONENT_REGISTRARS, ScriptingCompilerConfigurationComponentRegistrar())
 
         return KotlinCoreEnvironment.createForTests(testRootDisposable, configuration, EnvironmentConfigFiles.JVM_CONFIG_FILES)
     }
@@ -69,7 +72,7 @@ class ScriptingCompilerPluginTest : TestCaseWithTmpdir() {
         val configuration = CompilerConfiguration()
 
         cmdlineProcessor.processOption(
-            ScriptingCommandLineProcessor.LEGACY_SCRIPT_RESOLVER_ENVIRONMENT_OPTION,
+            ScriptingCommandLineProcessor.LEGACY_SCRIPT_RESOLVER_ENVIRONMENT_OPTION as AbstractCliOption,
             """abc=def,11="ab cd \\ \"",long="$longStr"""",
             configuration
         )

@@ -151,7 +151,7 @@
     </group>
 
     <action id="KotlinThrowException" class="org.jetbrains.kotlin.idea.actions.internal.KotlinThrowExceptionAction"
-            text="Throw Kotlin Plugin Exception"/>
+            text="Drop an error from Kotlin plugin"/>
 
     <action id="ExtractFunctionToScope" class="org.jetbrains.kotlin.idea.refactoring.introduce.extractFunction.ExtractFunctionToScopeAction"
             text="Function to _Scope...">
@@ -360,6 +360,12 @@
                     serviceImplementation="org.jetbrains.kotlin.idea.core.script.settings.KotlinScriptingSettings"/>
 
     <errorHandler implementation="org.jetbrains.kotlin.idea.reporter.KotlinReportSubmitter"/>
+
+    <registryKey
+        key="kotlin.write.resolve.check"
+        description="Whether to enable the check for resolve activated from the write action"
+        defaultValue="false"
+        restartRequired="false"/>
 
     <internalFileTemplate name="Kotlin File"/>
     <internalFileTemplate name="Kotlin Class"/>
@@ -1729,6 +1735,11 @@
 
     <intentionAction>
       <className>org.jetbrains.kotlin.idea.intentions.RemoveUnderscoresFromNumericLiteralIntention</className>
+      <category>Kotlin</category>
+    </intentionAction>
+
+    <intentionAction>
+      <className>org.jetbrains.kotlin.idea.intentions.RenameClassToContainingFileNameIntention</className>
       <category>Kotlin</category>
     </intentionAction>
 
