@@ -9,12 +9,17 @@ buildscript {
     extra["defaultSnapshotVersion"] = "1.3-SNAPSHOT"
 
     // when updating please also update JPS artifacts configuration: https://jetbrains.quip.com/zzGUAYSJ6gv3/JPS-Build-update-bootstrap
-    kotlinBootstrapFrom(BootstrapOption.TeamCity("1.3.50-dev-44", onlySuccessBootstrap = false))
+    kotlinBootstrapFrom(BootstrapOption.TeamCity("1.3.50-dev-397", onlySuccessBootstrap = false))
 
-    repositories.withRedirector(project) {
+    repositories {
         bootstrapKotlinRepo?.let(::maven)
-        maven("https://plugins.gradle.org/m2")
-        maven("https://dl.bintray.com/kotlin/ktor")
+
+        val cacheRedirectorEnabled = findProperty("cacheRedirectorEnabled")?.toString()?.toBoolean() == true
+        if (cacheRedirectorEnabled) {
+            maven("https://cache-redirector.jetbrains.com/plugins.gradle.org/m2")
+        } else {
+            maven("https://plugins.gradle.org/m2")
+        }
     }
 
     // a workaround for kotlin compiler classpath in kotlin project: sometimes gradle substitutes
@@ -256,7 +261,8 @@ extra["compilerModules"] = arrayOf(
     ":compiler:fir:resolve",
     ":compiler:fir:tree",
     ":compiler:fir:psi2fir",
-    ":compiler:fir:fir2ir"
+    ":compiler:fir:fir2ir",
+    ":compiler:fir:java"
 )
 
 val coreLibProjects = listOfNotNull(
@@ -337,7 +343,6 @@ allprojects {
         maven(protobufRepo)
         maven(intellijRepo)
         maven(bootstrapKotlinRepo!!.replace("artifacts/content/maven/", "artifacts/content/internal/repo"))
-        maven(kotlinNativeRepo)
         maven("https://dl.bintray.com/kotlin/ktor")
     }
 
@@ -411,10 +416,12 @@ allprojects {
             }
         }
 
-        if (cacheRedirectorEnabled()) {
-            logger.info("Redirecting repositories for $displayName")
-            repositories.redirect()
+        // Aggregate task for build related checks
+        tasks.register("checkBuild") {
+            tasks.findByName("check")?.dependsOn(this)
         }
+
+        apply(from = "$rootDir/gradle/cacheRedirector.gradle.kts")
     }
 }
 
@@ -583,6 +590,7 @@ tasks {
             ":idea:idea-gradle-native:test",
             ":idea:idea-maven:test",
             ":j2k:test",
+            ":nj2k:test",
             ":idea:eval4j:test"
         )
     }
