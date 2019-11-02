@@ -7,6 +7,7 @@ package org.jetbrains.kotlin.fir
 
 import org.jetbrains.kotlin.fir.declarations.FirFile
 import org.jetbrains.kotlin.fir.declarations.FirMemberDeclaration
+import org.jetbrains.kotlin.fir.diagnostics.FirSimpleDiagnostic
 import org.jetbrains.kotlin.fir.expressions.*
 import org.jetbrains.kotlin.fir.expressions.impl.FirExpressionStub
 import org.jetbrains.kotlin.fir.expressions.impl.FirResolvedQualifierImpl
@@ -18,6 +19,9 @@ import org.jetbrains.kotlin.fir.references.impl.FirResolvedNamedReferenceImpl
 import org.jetbrains.kotlin.fir.references.impl.FirSimpleNamedReference
 import org.jetbrains.kotlin.fir.resolve.*
 import org.jetbrains.kotlin.fir.resolve.calls.*
+import org.jetbrains.kotlin.fir.resolve.diagnostics.FirAmbiguityError
+import org.jetbrains.kotlin.fir.resolve.diagnostics.FirInapplicableCandidateError
+import org.jetbrains.kotlin.fir.resolve.diagnostics.FirUnresolvedNameError
 import org.jetbrains.kotlin.fir.resolve.substitution.ConeSubstitutor
 import org.jetbrains.kotlin.fir.resolve.transformers.StoreNameReference
 import org.jetbrains.kotlin.fir.resolve.transformers.StoreReceiver
@@ -27,7 +31,9 @@ import org.jetbrains.kotlin.fir.resolve.transformers.phasedFir
 import org.jetbrains.kotlin.fir.scopes.FirScope
 import org.jetbrains.kotlin.fir.scopes.impl.FirLocalScope
 import org.jetbrains.kotlin.fir.symbols.AbstractFirBasedSymbol
+import org.jetbrains.kotlin.fir.symbols.StandardClassIds
 import org.jetbrains.kotlin.fir.symbols.impl.*
+import org.jetbrains.kotlin.fir.symbols.invoke
 import org.jetbrains.kotlin.fir.types.ConeKotlinErrorType
 import org.jetbrains.kotlin.fir.types.ConeKotlinType
 import org.jetbrains.kotlin.fir.types.FirTypeRef
@@ -203,8 +209,15 @@ class FirCallResolver(
         }
         if (referencedSymbol is FirClassLikeSymbol<*>) {
             val classId = referencedSymbol.classId
-            return FirResolvedQualifierImpl(nameReference.psi, classId.packageFqName, classId.relativeClassName).apply {
-                resultType = typeForQualifier(this)
+            return FirResolvedQualifierImpl(nameReference.source, classId.packageFqName, classId.relativeClassName).apply {
+                resultType = if (classId.isLocal) {
+                    typeForQualifierByDeclaration(referencedSymbol.fir, resultType)
+                        ?: resultType.resolvedTypeFromPrototype(
+                            StandardClassIds.Unit(symbolProvider).constructType(emptyArray(), isNullable = false)
+                        )
+                } else {
+                    typeForQualifier(this)
+                }
             }
         }
 
@@ -292,7 +305,7 @@ class FirCallResolver(
                 expectedType,
                 outerConstraintSystemBuilder,
                 lhs,
-                FirExpressionStub(callableReferenceAccess.psi).apply { replaceTypeRef(FirResolvedTypeRefImpl(null, lhs.type)) },
+                FirExpressionStub(callableReferenceAccess.source).apply { replaceTypeRef(FirResolvedTypeRefImpl(null, lhs.type)) },
                 callableReferenceAccess.explicitReceiver
             )
         }
@@ -353,42 +366,33 @@ class FirCallResolver(
         applicability: CandidateApplicability
     ): FirNamedReference {
         val name = namedReference.name
-        val psi = namedReference.psi
+        val source = namedReference.source
         return when {
             candidates.isEmpty() -> FirErrorNamedReferenceImpl(
-                psi, "Unresolved name: $name"
+                source, FirUnresolvedNameError(name)
             )
             applicability < CandidateApplicability.SYNTHETIC_RESOLVED -> {
                 FirErrorNamedReferenceImpl(
-                    psi,
-                    "Inapplicable($applicability): ${candidates.map { describeSymbol(it.symbol) }}"
+                    source,
+                    FirInapplicableCandidateError(applicability, candidates.map { it.symbol })
                 )
             }
             candidates.size == 1 -> {
                 val candidate = candidates.single()
                 val coneSymbol = candidate.symbol
                 when {
-                    coneSymbol is FirBackingFieldSymbol -> FirBackingFieldReferenceImpl(psi, null, coneSymbol)
+                    coneSymbol is FirBackingFieldSymbol -> FirBackingFieldReferenceImpl(source, null, coneSymbol)
                     coneSymbol is FirVariableSymbol && (
                             coneSymbol !is FirPropertySymbol ||
                                     (coneSymbol.phasedFir(session) as FirMemberDeclaration).typeParameters.isEmpty()
                             ) ->
-                        FirResolvedNamedReferenceImpl(psi, name, coneSymbol)
-                    else -> FirNamedReferenceWithCandidate(psi, name, candidate)
+                        FirResolvedNamedReferenceImpl(source, name, coneSymbol)
+                    else -> FirNamedReferenceWithCandidate(source, name, candidate)
                 }
             }
             else -> FirErrorNamedReferenceImpl(
-                psi, "Ambiguity: $name, ${candidates.map { describeSymbol(it.symbol) }}"
+                source, FirAmbiguityError(name, candidates.map { it.symbol })
             )
-        }
-    }
-
-
-    private fun describeSymbol(symbol: AbstractFirBasedSymbol<*>): String {
-        return when (symbol) {
-            is FirClassLikeSymbol<*> -> symbol.classId.asString()
-            is FirCallableSymbol<*> -> symbol.callableId.toString()
-            else -> "$symbol"
         }
     }
 }

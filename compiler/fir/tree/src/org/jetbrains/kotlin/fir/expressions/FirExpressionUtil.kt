@@ -5,10 +5,12 @@
 
 package org.jetbrains.kotlin.fir.expressions
 
-import com.intellij.psi.PsiElement
+import org.jetbrains.kotlin.fir.FirSourceElement
+import org.jetbrains.kotlin.fir.diagnostics.FirDiagnostic
+import org.jetbrains.kotlin.fir.diagnostics.FirSimpleDiagnostic
 import org.jetbrains.kotlin.fir.expressions.impl.FirConstExpressionImpl
 import org.jetbrains.kotlin.fir.expressions.impl.FirErrorExpressionImpl
-import org.jetbrains.kotlin.fir.expressions.impl.FirErrorLoop
+import org.jetbrains.kotlin.fir.expressions.impl.FirErrorLoopImpl
 import org.jetbrains.kotlin.fir.references.FirResolvedNamedReference
 import org.jetbrains.kotlin.fir.symbols.impl.FirCallableSymbol
 import org.jetbrains.kotlin.fir.types.ConeClassErrorType
@@ -23,8 +25,8 @@ inline val FirAnnotationCall.coneClassLikeType: ConeClassLikeType?
 inline val FirAnnotationCall.classId: ClassId?
     get() = coneClassLikeType?.lookupTag?.classId
 
-fun <T> FirConstExpressionImpl(psi: PsiElement?, kind: IrConstKind<T>, value: T?, errorReason: String): FirExpression =
-    value?.let { FirConstExpressionImpl(psi, kind, it) } ?: FirErrorExpressionImpl(psi, errorReason)
+fun <T> FirConstExpressionImpl(source: FirSourceElement?, kind: IrConstKind<T>, value: T?, diagnostic: FirDiagnostic): FirExpression =
+    value?.let { FirConstExpressionImpl(source, kind, it) } ?: FirErrorExpressionImpl(source, diagnostic)
 
 inline val FirTypeOperatorCall.argument: FirExpression get() = arguments.first()
 
@@ -36,6 +38,8 @@ fun FirExpression.toResolvedCallableSymbol(): FirCallableSymbol<*>? {
     return toResolvedCallableReference()?.resolvedSymbol as FirCallableSymbol<*>?
 }
 
-fun FirErrorLoop(psi: PsiElement?, reason: String): FirErrorLoop = FirErrorLoop(psi).apply {
-    condition = FirErrorExpressionImpl(psi, reason)
+fun FirErrorLoop(source: FirSourceElement?, diagnostic: FirDiagnostic): FirErrorLoop {
+    return FirErrorLoopImpl(source, diagnostic).apply {
+        condition = FirErrorExpressionImpl(source, diagnostic)
+    }
 }

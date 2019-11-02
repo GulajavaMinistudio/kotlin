@@ -33,13 +33,14 @@ import org.jetbrains.kotlin.fir.declarations.FirVariable
 import org.jetbrains.kotlin.fir.declarations.FirValueParameter
 import org.jetbrains.kotlin.fir.declarations.FirProperty
 import org.jetbrains.kotlin.fir.declarations.FirField
-import org.jetbrains.kotlin.fir.declarations.FirClass
 import org.jetbrains.kotlin.fir.declarations.FirClassLikeDeclaration
+import org.jetbrains.kotlin.fir.declarations.FirClass
 import org.jetbrains.kotlin.fir.declarations.FirRegularClass
 import org.jetbrains.kotlin.fir.declarations.FirSealedClass
 import org.jetbrains.kotlin.fir.declarations.FirTypeAlias
 import org.jetbrains.kotlin.fir.declarations.FirEnumEntry
 import org.jetbrains.kotlin.fir.declarations.FirFunction
+import org.jetbrains.kotlin.fir.declarations.FirContractDescriptionOwner
 import org.jetbrains.kotlin.fir.declarations.FirMemberFunction
 import org.jetbrains.kotlin.fir.declarations.FirSimpleFunction
 import org.jetbrains.kotlin.fir.declarations.FirPropertyAccessor
@@ -47,7 +48,9 @@ import org.jetbrains.kotlin.fir.declarations.FirConstructor
 import org.jetbrains.kotlin.fir.declarations.FirFile
 import org.jetbrains.kotlin.fir.declarations.FirAnonymousFunction
 import org.jetbrains.kotlin.fir.declarations.FirAnonymousObject
+import org.jetbrains.kotlin.fir.diagnostics.FirDiagnosticHolder
 import org.jetbrains.kotlin.fir.expressions.FirLoop
+import org.jetbrains.kotlin.fir.expressions.FirErrorLoop
 import org.jetbrains.kotlin.fir.expressions.FirDoWhileLoop
 import org.jetbrains.kotlin.fir.expressions.FirWhileLoop
 import org.jetbrains.kotlin.fir.expressions.FirBlock
@@ -113,6 +116,7 @@ import org.jetbrains.kotlin.fir.types.FirDynamicTypeRef
 import org.jetbrains.kotlin.fir.types.FirFunctionTypeRef
 import org.jetbrains.kotlin.fir.types.FirResolvedFunctionTypeRef
 import org.jetbrains.kotlin.fir.types.FirImplicitTypeRef
+import org.jetbrains.kotlin.fir.contracts.FirContractDescription
 
 /*
  * This file was generated automatically
@@ -176,9 +180,9 @@ abstract class FirVisitor<out R, in D> {
 
     open fun visitField(field: FirField, data: D): R  = visitElement(field, data)
 
-    open fun visitClass(klass: FirClass, data: D): R  = visitElement(klass, data)
-
     open fun <F : FirClassLikeDeclaration<F>> visitClassLikeDeclaration(classLikeDeclaration: FirClassLikeDeclaration<F>, data: D): R  = visitElement(classLikeDeclaration, data)
+
+    open fun <F : FirClass<F>> visitClass(klass: FirClass<F>, data: D): R  = visitElement(klass, data)
 
     open fun visitRegularClass(regularClass: FirRegularClass, data: D): R  = visitElement(regularClass, data)
 
@@ -189,6 +193,8 @@ abstract class FirVisitor<out R, in D> {
     open fun visitEnumEntry(enumEntry: FirEnumEntry, data: D): R  = visitElement(enumEntry, data)
 
     open fun <F : FirFunction<F>> visitFunction(function: FirFunction<F>, data: D): R  = visitElement(function, data)
+
+    open fun visitContractDescriptionOwner(contractDescriptionOwner: FirContractDescriptionOwner, data: D): R  = visitElement(contractDescriptionOwner, data)
 
     open fun <F : FirMemberFunction<F>> visitMemberFunction(memberFunction: FirMemberFunction<F>, data: D): R  = visitElement(memberFunction, data)
 
@@ -204,7 +210,11 @@ abstract class FirVisitor<out R, in D> {
 
     open fun visitAnonymousObject(anonymousObject: FirAnonymousObject, data: D): R  = visitElement(anonymousObject, data)
 
+    open fun visitDiagnosticHolder(diagnosticHolder: FirDiagnosticHolder, data: D): R  = visitElement(diagnosticHolder, data)
+
     open fun visitLoop(loop: FirLoop, data: D): R  = visitElement(loop, data)
+
+    open fun visitErrorLoop(errorLoop: FirErrorLoop, data: D): R  = visitElement(errorLoop, data)
 
     open fun visitDoWhileLoop(doWhileLoop: FirDoWhileLoop, data: D): R  = visitElement(doWhileLoop, data)
 
@@ -335,5 +345,7 @@ abstract class FirVisitor<out R, in D> {
     open fun visitResolvedFunctionTypeRef(resolvedFunctionTypeRef: FirResolvedFunctionTypeRef, data: D): R  = visitElement(resolvedFunctionTypeRef, data)
 
     open fun visitImplicitTypeRef(implicitTypeRef: FirImplicitTypeRef, data: D): R  = visitElement(implicitTypeRef, data)
+
+    open fun visitContractDescription(contractDescription: FirContractDescription, data: D): R  = visitElement(contractDescription, data)
 
 }

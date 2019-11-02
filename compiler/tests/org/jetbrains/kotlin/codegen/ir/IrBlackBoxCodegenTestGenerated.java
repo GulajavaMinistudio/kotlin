@@ -2612,9 +2612,24 @@ public class IrBlackBoxCodegenTestGenerated extends AbstractIrBlackBoxCodegenTes
                 runTest("compiler/testData/codegen/box/callableReference/varargAndDefaults/emptyVarargAndDefault.kt");
             }
 
-            @TestMetadata("inline.kt")
-            public void testInline() throws Exception {
-                runTest("compiler/testData/codegen/box/callableReference/varargAndDefaults/inline.kt");
+            @TestMetadata("inlineDefault.kt")
+            public void testInlineDefault() throws Exception {
+                runTest("compiler/testData/codegen/box/callableReference/varargAndDefaults/inlineDefault.kt");
+            }
+
+            @TestMetadata("inlineVararg.kt")
+            public void testInlineVararg() throws Exception {
+                runTest("compiler/testData/codegen/box/callableReference/varargAndDefaults/inlineVararg.kt");
+            }
+
+            @TestMetadata("inlineVarargAndDefault.kt")
+            public void testInlineVarargAndDefault() throws Exception {
+                runTest("compiler/testData/codegen/box/callableReference/varargAndDefaults/inlineVarargAndDefault.kt");
+            }
+
+            @TestMetadata("inlineVarargInts.kt")
+            public void testInlineVarargInts() throws Exception {
+                runTest("compiler/testData/codegen/box/callableReference/varargAndDefaults/inlineVarargInts.kt");
             }
 
             @TestMetadata("innerConstructorWithVararg.kt")
@@ -6385,9 +6400,19 @@ public class IrBlackBoxCodegenTestGenerated extends AbstractIrBlackBoxCodegenTes
                 runTest("compiler/testData/codegen/box/coroutines/debug/fqName.kt");
             }
 
+            @TestMetadata("multipleSuspendCallsOnSameLine.kt")
+            public void testMultipleSuspendCallsOnSameLine() throws Exception {
+                runTest("compiler/testData/codegen/box/coroutines/debug/multipleSuspendCallsOnSameLine.kt");
+            }
+
             @TestMetadata("runtimeDebugMetadata.kt")
             public void testRuntimeDebugMetadata() throws Exception {
                 runTest("compiler/testData/codegen/box/coroutines/debug/runtimeDebugMetadata.kt");
+            }
+
+            @TestMetadata("throwsOnSameLine.kt")
+            public void testThrowsOnSameLine() throws Exception {
+                runTest("compiler/testData/codegen/box/coroutines/debug/throwsOnSameLine.kt");
             }
         }
 
@@ -7377,6 +7402,16 @@ public class IrBlackBoxCodegenTestGenerated extends AbstractIrBlackBoxCodegenTes
             @TestMetadata("tryCatch.kt")
             public void testTryCatch_1_3() throws Exception {
                 runTestWithPackageReplacement("compiler/testData/codegen/box/coroutines/tailCallOptimizations/tryCatch.kt", "kotlin.coroutines");
+            }
+
+            @TestMetadata("unitFunReturnsNonUnit.kt")
+            public void testUnitFunReturnsNonUnit() throws Exception {
+                runTest("compiler/testData/codegen/box/coroutines/tailCallOptimizations/unitFunReturnsNonUnit.kt");
+            }
+
+            @TestMetadata("unitFunReturnsNonUnitCallSuspend.kt")
+            public void testUnitFunReturnsNonUnitCallSuspend() throws Exception {
+                runTest("compiler/testData/codegen/box/coroutines/tailCallOptimizations/unitFunReturnsNonUnitCallSuspend.kt");
             }
 
             @TestMetadata("unreachable.kt")
@@ -9187,6 +9222,16 @@ public class IrBlackBoxCodegenTestGenerated extends AbstractIrBlackBoxCodegenTes
 
         public void testAllFilesPresentInElvis() throws Exception {
             KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/box/elvis"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.JVM_IR, true);
+        }
+
+        @TestMetadata("genericElvisWithMoreSpecificLHS.kt")
+        public void testGenericElvisWithMoreSpecificLHS() throws Exception {
+            runTest("compiler/testData/codegen/box/elvis/genericElvisWithMoreSpecificLHS.kt");
+        }
+
+        @TestMetadata("genericElvisWithNullLHS.kt")
+        public void testGenericElvisWithNullLHS() throws Exception {
+            runTest("compiler/testData/codegen/box/elvis/genericElvisWithNullLHS.kt");
         }
 
         @TestMetadata("genericNull.kt")
@@ -17696,6 +17741,11 @@ public class IrBlackBoxCodegenTestGenerated extends AbstractIrBlackBoxCodegenTes
                     runTest("compiler/testData/codegen/box/properties/lateinit/isInitializedAndDeinitialize/innerSubclass.kt");
                 }
 
+                @TestMetadata("isInitializedMultiFile.kt")
+                public void testIsInitializedMultiFile() throws Exception {
+                    runTest("compiler/testData/codegen/box/properties/lateinit/isInitializedAndDeinitialize/isInitializedMultiFile.kt");
+                }
+
                 @TestMetadata("nonInlineLambda.kt")
                 public void testNonInlineLambda() throws Exception {
                     runTest("compiler/testData/codegen/box/properties/lateinit/isInitializedAndDeinitialize/nonInlineLambda.kt");
@@ -25361,6 +25411,24 @@ public class IrBlackBoxCodegenTestGenerated extends AbstractIrBlackBoxCodegenTes
         @TestMetadata("syntheticAccessorInMultiFile.kt")
         public void testSyntheticAccessorInMultiFile() throws Exception {
             runTest("compiler/testData/codegen/box/topLevelPrivate/syntheticAccessorInMultiFile.kt");
+        }
+    }
+
+    @TestMetadata("compiler/testData/codegen/box/trailingComma")
+    @TestDataPath("$PROJECT_ROOT")
+    @RunWith(JUnit3RunnerWithInners.class)
+    public static class TrailingComma extends AbstractIrBlackBoxCodegenTest {
+        private void runTest(String testDataFilePath) throws Exception {
+            KotlinTestUtils.runTest(this::doTest, TargetBackend.JVM_IR, testDataFilePath);
+        }
+
+        public void testAllFilesPresentInTrailingComma() throws Exception {
+            KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/box/trailingComma"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.JVM_IR, true);
+        }
+
+        @TestMetadata("noDisambiguation.kt")
+        public void testNoDisambiguation() throws Exception {
+            runTest("compiler/testData/codegen/box/trailingComma/noDisambiguation.kt");
         }
     }
 

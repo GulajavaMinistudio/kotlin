@@ -442,7 +442,7 @@ private fun IrFunction.generateDefaultsFunctionImpl(
         syntheticParameters += newFunction.valueParameter(
             syntheticParameters.last().index + 1,
             kConstructorMarkerName,
-            context.ir.symbols.defaultConstructorMarker.owner.defaultType
+            context.ir.symbols.defaultConstructorMarker.owner.defaultType.makeNullable()
         )
     } else if (context.ir.shouldGenerateHandlerParameterForDefaultBodyFun()) {
         syntheticParameters += newFunction.valueParameter(
@@ -523,7 +523,8 @@ private fun buildFunctionDeclaration(irFunction: IrFunction, origin: IrDeclarati
                 isExternal = false,
                 isTailrec = false,
                 isSuspend = irFunction.isSuspend,
-                isExpect = irFunction.isExpect
+                isExpect = irFunction.isExpect,
+                isFakeOverride = origin == IrDeclarationOrigin.FAKE_OVERRIDE
             ).also {
                 descriptor.bind(it)
                 it.parent = irFunction.parent

@@ -22,6 +22,8 @@ import org.jetbrains.kotlin.fir.builder.generateComponentFunctions
 import org.jetbrains.kotlin.fir.builder.generateCopyFunction
 import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.declarations.impl.*
+import org.jetbrains.kotlin.fir.diagnostics.DiagnosticKind
+import org.jetbrains.kotlin.fir.diagnostics.FirSimpleDiagnostic
 import org.jetbrains.kotlin.fir.expressions.*
 import org.jetbrains.kotlin.fir.expressions.impl.*
 import org.jetbrains.kotlin.fir.lightTree.LightTree2Fir
@@ -39,6 +41,7 @@ import org.jetbrains.kotlin.fir.types.FirUserTypeRef
 import org.jetbrains.kotlin.fir.types.impl.*
 import org.jetbrains.kotlin.lexer.KtModifierKeywordToken
 import org.jetbrains.kotlin.lexer.KtTokens.*
+import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.name.SpecialNames
@@ -379,7 +382,7 @@ class DeclarationsConverter(
                     className,
                     status,
                     classKind,
-                    FirClassSymbol(context.currentClassId)
+                    FirRegularClassSymbol(context.currentClassId)
                 )
             } else {
                 FirClassImpl(
@@ -388,7 +391,7 @@ class DeclarationsConverter(
                     className,
                     status,
                     classKind,
-                    FirClassSymbol(context.currentClassId)
+                    FirRegularClassSymbol(context.currentClassId)
                 )
             }
             firClass.annotations += modifiers.annotations
@@ -464,7 +467,7 @@ class DeclarationsConverter(
         superTypeRefs.ifEmpty { superTypeRefs += implicitAnyType }
         val delegatedType = delegatedSuperTypeRef ?: implicitAnyType
 
-        return FirAnonymousObjectImpl(null, session).apply {
+        return FirAnonymousObjectImpl(null, session, FirAnonymousObjectSymbol()).apply {
             annotations += modifiers.annotations
             this.superTypeRefs += superTypeRefs
             this.typeRef = superTypeRefs.first()
@@ -514,7 +517,7 @@ class DeclarationsConverter(
                 null,
                 session,
                 enumEntryName,
-                FirClassSymbol(context.currentClassId)
+                FirRegularClassSymbol(context.currentClassId)
             )
             firEnumEntry.annotations += modifiers.annotations
 
@@ -663,7 +666,7 @@ class DeclarationsConverter(
         }
 
         val delegatedSelfTypeRef =
-            if (classWrapper.isObjectLiteral()) FirErrorTypeRefImpl(null, "Constructor in object")
+            if (classWrapper.isObjectLiteral()) FirErrorTypeRefImpl(null, FirSimpleDiagnostic("Constructor in object", DiagnosticKind.ConstructorInObject))
             else classWrapper.delegatedSelfTypeRef
 
         val status = FirDeclarationStatusImpl(modifiers.getVisibility(), Modality.FINAL).apply {
@@ -713,8 +716,8 @@ class DeclarationsConverter(
         val isThis = (isImplicit && classWrapper.hasPrimaryConstructor) || thisKeywordPresent
         val delegatedType =
             if (classWrapper.isObjectLiteral() || classWrapper.isInterface()) when {
-                isThis -> FirErrorTypeRefImpl(null, "Constructor in object")
-                else -> FirErrorTypeRefImpl(null, "No super type")
+                isThis -> FirErrorTypeRefImpl(null, FirSimpleDiagnostic("Constructor in object", DiagnosticKind.ConstructorInObject))
+                else -> FirErrorTypeRefImpl(null, FirSimpleDiagnostic("No super type", DiagnosticKind.Syntax))
             }
             else when {
                 isThis -> classWrapper.delegatedSelfTypeRef
@@ -868,7 +871,7 @@ class DeclarationsConverter(
     private fun convertDestructingDeclaration(destructingDeclaration: LighterASTNode): DestructuringDeclaration {
         var isVar = false
         val entries = mutableListOf<FirVariable<*>>()
-        var firExpression: FirExpression = FirErrorExpressionImpl(null, "Destructuring declaration without initializer")
+        var firExpression: FirExpression = FirErrorExpressionImpl(null, FirSimpleDiagnostic("Destructuring declaration without initializer", DiagnosticKind.Syntax))
         destructingDeclaration.forEachChildren {
             when (it.tokenType) {
                 VAR_KEYWORD -> isVar = true
@@ -1164,7 +1167,7 @@ class DeclarationsConverter(
      */
     private fun convertExplicitDelegation(explicitDelegation: LighterASTNode): FirDelegatedTypeRef {
         lateinit var firTypeRef: FirTypeRef
-        var firExpression: FirExpression? = FirErrorExpressionImpl(null, "Should have delegate")
+        var firExpression: FirExpression? = FirErrorExpressionImpl(null, FirSimpleDiagnostic("Should have delegate", DiagnosticKind.Syntax))
         explicitDelegation.forEachChildren {
             when (it.tokenType) {
                 TYPE_REFERENCE -> firTypeRef = convertType(it)
@@ -1254,10 +1257,10 @@ class DeclarationsConverter(
      */
     fun convertType(type: LighterASTNode): FirTypeRef {
         if (type.asText.isEmpty()) {
-            return FirErrorTypeRefImpl(null, "Unwrapped type is null")
+            return FirErrorTypeRefImpl(null, FirSimpleDiagnostic("Unwrapped type is null", DiagnosticKind.Syntax))
         }
         var typeModifiers = TypeModifier() //TODO what with suspend?
-        var firType: FirTypeRef = FirErrorTypeRefImpl(null, "Incomplete code")
+        var firType: FirTypeRef = FirErrorTypeRefImpl(null, FirSimpleDiagnostic("Incomplete code", DiagnosticKind.Syntax))
         var afterLPar = false
         type.forEachChildren {
             when (it.tokenType) {
@@ -1268,7 +1271,7 @@ class DeclarationsConverter(
                 NULLABLE_TYPE -> firType = convertNullableType(it)
                 FUNCTION_TYPE -> firType = convertFunctionType(it)
                 DYNAMIC_TYPE -> firType = FirDynamicTypeRefImpl(null, false)
-                TokenType.ERROR_ELEMENT -> firType = FirErrorTypeRefImpl(null, "Unwrapped type is null")
+                TokenType.ERROR_ELEMENT -> firType = FirErrorTypeRefImpl(null, FirSimpleDiagnostic("Unwrapped type is null", DiagnosticKind.Syntax))
             }
         }
 
@@ -1323,7 +1326,7 @@ class DeclarationsConverter(
         }
 
         if (identifier == null)
-            return FirErrorTypeRefImpl(null, "Incomplete user type")
+            return FirErrorTypeRefImpl(null, FirSimpleDiagnostic("Incomplete user type", DiagnosticKind.Syntax))
 
         val qualifier = FirQualifierPartImpl(
             identifier.nameAsSafeName()
@@ -1393,7 +1396,12 @@ class DeclarationsConverter(
             isNullable,
             receiverTypeReference,
             returnTypeReference
-        ).apply { valueParameters += valueParametersList.map { it.firValueParameter } }
+        ).apply {
+            valueParameters += valueParametersList.map { it.firValueParameter }
+            if (receiverTypeReference != null) {
+                annotations += extensionFunctionAnnotation
+            }
+        }
     }
 
     /**
@@ -1444,4 +1452,17 @@ class DeclarationsConverter(
         ).apply { annotations += modifiers.annotations }
         return ValueParameter(isVal, isVar, modifiers, firValueParameter, destructuringDeclaration)
     }
+
+    private val extensionFunctionAnnotation = FirAnnotationCallImpl(
+        null,
+        null,
+        FirResolvedTypeRefImpl(
+            null,
+            ConeClassTypeImpl(
+                ConeClassLikeLookupTagImpl(ClassId.fromString("kotlin/ExtensionFunctionType")),
+                emptyArray(),
+                false
+            )
+        )
+    )
 }

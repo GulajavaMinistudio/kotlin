@@ -6,6 +6,8 @@
 package org.jetbrains.kotlin.fir.resolve.transformers.body.resolve
 
 import org.jetbrains.kotlin.fir.FirTargetElement
+import org.jetbrains.kotlin.fir.diagnostics.DiagnosticKind
+import org.jetbrains.kotlin.fir.diagnostics.FirSimpleDiagnostic
 import org.jetbrains.kotlin.fir.expressions.*
 import org.jetbrains.kotlin.fir.expressions.impl.FirElseIfTrueCondition
 import org.jetbrains.kotlin.fir.expressions.impl.FirEmptyExpressionBlock
@@ -69,8 +71,9 @@ class FirControlFlowStatementsResolveTransformer(transformer: FirBodyResolveTran
                     whenExpression = whenExpression.transformBranches(transformer, null)
 
                     whenExpression = syntheticCallGenerator.generateCalleeForWhenExpression(whenExpression) ?: run {
+                        whenExpression = whenExpression.transformSingle(whenExhaustivenessTransformer, null)
                         dataFlowAnalyzer.exitWhenExpression(whenExpression)
-                        whenExpression.resultType = FirErrorTypeRefImpl(null, "")
+                        whenExpression.resultType = FirErrorTypeRefImpl(null, FirSimpleDiagnostic("Can't resolve when expression", DiagnosticKind.InferenceError))
                         return@with whenExpression.compose()
                     }
 
@@ -135,7 +138,7 @@ class FirControlFlowStatementsResolveTransformer(transformer: FirBodyResolveTran
             val expectedTypeRef = data as FirTypeRef?
             callCompleter.completeCall(it, expectedTypeRef)
         } ?: run {
-            tryExpression.resultType = FirErrorTypeRefImpl(null, "")
+            tryExpression.resultType = FirErrorTypeRefImpl(null, FirSimpleDiagnostic("Can't resolve try expression", DiagnosticKind.InferenceError))
             tryExpression
         }
 

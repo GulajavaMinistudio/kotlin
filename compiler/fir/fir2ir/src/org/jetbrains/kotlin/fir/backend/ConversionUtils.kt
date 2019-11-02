@@ -8,6 +8,7 @@ package org.jetbrains.kotlin.fir.backend
 import com.intellij.psi.PsiCompiledElement
 import org.jetbrains.kotlin.fir.FirElement
 import org.jetbrains.kotlin.fir.FirSession
+import org.jetbrains.kotlin.fir.psi
 import org.jetbrains.kotlin.fir.references.FirReference
 import org.jetbrains.kotlin.fir.references.FirResolvedNamedReference
 import org.jetbrains.kotlin.fir.references.FirThisReference
@@ -69,6 +70,7 @@ fun ConeKotlinType.toIrType(session: FirSession, declarationStorage: Fir2IrDecla
             // TODO: add intersectionTypeApproximation
             intersectedTypes.first().toIrType(session, declarationStorage)
         }
+        is ConeStubType -> createErrorType()
     }
 }
 
@@ -132,7 +134,7 @@ private fun AbstractFirBasedSymbol<*>.toSymbol(declarationStorage: Fir2IrDeclara
     else -> null
 }
 
-fun FirClassSymbol.toClassSymbol(declarationStorage: Fir2IrDeclarationStorage): IrClassSymbol {
+fun FirClassSymbol<*>.toClassSymbol(declarationStorage: Fir2IrDeclarationStorage): IrClassSymbol {
     return declarationStorage.getIrClassSymbol(this)
 }
 

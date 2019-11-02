@@ -150,11 +150,7 @@ class ExpressionCodegen(
         if (fileEntry != null) {
             val lineNumber = fileEntry.getLineNumber(offset) + 1
             assert(lineNumber > 0)
-            // State-machine builder splits the sequence of instructions into states inside state-machine, adding additional LINENUMBERs
-            // between them for debugger to stop on suspension. Thus, it requires as much LINENUMBER information as possible to be present,
-            // otherwise, any exception will have incorrect line number. See elvisLineNumber.kt test.
-            // TODO: Remove unneeded LINENUMBERs after building the state-machine.
-            if (lastLineNumber != lineNumber || irFunction.isSuspend || irFunction.isInvokeSuspendOfLambda(context)) {
+            if (lastLineNumber != lineNumber) {
                 lastLineNumber = lineNumber
                 mv.visitLineNumber(lineNumber, markNewLabel())
             }
@@ -523,7 +519,7 @@ class ExpressionCodegen(
     override fun visitSetVariable(expression: IrSetVariable, data: BlockInfo): PromisedValue {
         expression.markLineNumber(startOffset = true)
         setVariable(expression.symbol, expression.value, data)
-        return defaultValue(expression.type)
+        return immaterialUnitValue
     }
 
     fun setVariable(symbol: IrValueSymbol, value: IrExpression, data: BlockInfo) {
@@ -603,7 +599,10 @@ class ExpressionCodegen(
         SwitchGenerator(expression, data, this).generate()?.let { return it }
 
         val endLabel = Label()
-        val exhaustive = expression.branches.any { it.condition.isTrueConst() }
+        val exhaustive = expression.branches.any { it.condition.isTrueConst() } && !expression.type.isUnit()
+        assert(exhaustive || expression.type.isUnit()) {
+            "non-exhaustive conditional should return Unit: ${expression.dump()}"
+        }
         for (branch in expression.branches) {
             val elseLabel = Label()
             if (branch.condition.isFalseConst() || branch.condition.isTrueConst()) {
@@ -618,26 +617,21 @@ class ExpressionCodegen(
             } else {
                 branch.condition.accept(this, data).coerceToBoolean().jumpIfFalse(elseLabel)
             }
-            val result = branch.result.accept(this, data).coerce(expression.type).materialized
+            val result = branch.result.accept(this, data)
             if (!exhaustive) {
                 result.discard()
-            } else if (branch.condition.isTrueConst()) {
-                // The rest of the expression is dead code.
-                mv.mark(endLabel)
-                return result
+            } else {
+                val materializedResult = result.coerce(expression.type).materialized
+                if (branch.condition.isTrueConst()) {
+                    // The rest of the expression is dead code.
+                    mv.mark(endLabel)
+                    return materializedResult
+                }
             }
             mv.goTo(endLabel)
             mv.mark(elseLabel)
         }
         mv.mark(endLabel)
-        // NOTE: using a non-exhaustive if/when as an expression is invalid, so it should theoretically
-        //       always return Unit. However, with the current frontend this is not always the case.
-        //       Most notably, 1. when all branches return/break/continue, the type is Nothing;
-        //       2. the frontend may sometimes infer Any instead of Unit, probably due to a bug
-        //       (see compiler/testData/codegen/box/controlStructures/ifIncompatibleBranches.kt).
-        //       It should still be safe to produce a soon-to-be-discarded Unit. (What is not ok is
-        //       inserting *any* code here, though, as its line number will be that of the last line
-        //       of the last branch.)
         return immaterialUnitValue
     }
 
@@ -757,7 +751,7 @@ class ExpressionCodegen(
         mv.nop()
         val tryAsmType = aTry.asmType
         val tryResult = aTry.tryResult.accept(this, data)
-        val isExpression = true //TODO: more wise check is required
+        val isExpression = !aTry.type.isUnit()
         var savedValue: Int? = null
         if (isExpression) {
             tryResult.coerce(tryAsmType, aTry.type).materialize()

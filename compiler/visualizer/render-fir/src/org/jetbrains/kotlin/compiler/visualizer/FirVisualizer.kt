@@ -11,6 +11,7 @@ import org.jetbrains.kotlin.fir.FirElement
 import org.jetbrains.kotlin.fir.FirLabel
 import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.expressions.*
+import org.jetbrains.kotlin.fir.psi
 import org.jetbrains.kotlin.fir.references.FirErrorNamedReference
 import org.jetbrains.kotlin.fir.references.FirNamedReference
 import org.jetbrains.kotlin.fir.references.FirResolvedNamedReference
@@ -357,7 +358,7 @@ class FirVisualizer(private val firFile: FirFile) : BaseRenderer() {
 
         override fun visitNamedReference(namedReference: FirNamedReference, data: StringBuilder) {
             if (namedReference is FirErrorNamedReference) {
-                data.append("[ERROR : ${namedReference.errorReason}]")
+                data.append("[ERROR : ${namedReference.diagnostic.reason}]")
                 return
             }
             visitElement(namedReference, data)
@@ -415,7 +416,7 @@ class FirVisualizer(private val firFile: FirFile) : BaseRenderer() {
                         functionCall.typeRef.accept(this, data)
                     }
                 }
-                is FirErrorNamedReference -> data.append("[ERROR : ${callee.errorReason}]")
+                is FirErrorNamedReference -> data.append("[ERROR : ${callee.diagnostic.reason}]")
             }
         }
 
@@ -430,7 +431,7 @@ class FirVisualizer(private val firFile: FirFile) : BaseRenderer() {
                 val fir = symbolProvider.getClassLikeSymbolByFqName(it)?.fir
                 if (fir is FirClass) {
                     data.append(fir.classKind.name.toLowerCase()).append(" ")
-                    data.append(fir.name)
+                    data.append((fir as? FirRegularClass)?.name ?: Name.special("<anonymous>"))
                     if (fir.superTypeRefs.any { it.render() != "kotlin/Any" }) {
                         data.append(": ")
                         fir.superTypeRefs.joinTo(data, separator = ", ") { typeRef -> typeRef.render() }
@@ -469,7 +470,7 @@ class FirVisualizer(private val firFile: FirFile) : BaseRenderer() {
         }
 
         override fun visitErrorTypeRef(errorTypeRef: FirErrorTypeRef, data: StringBuilder) {
-            data.append("[ERROR : ${errorTypeRef.reason}]")
+            data.append("[ERROR : ${errorTypeRef.diagnostic.reason}]")
         }
 
         override fun visitResolvedFunctionTypeRef(resolvedFunctionTypeRef: FirResolvedFunctionTypeRef, data: StringBuilder) {
