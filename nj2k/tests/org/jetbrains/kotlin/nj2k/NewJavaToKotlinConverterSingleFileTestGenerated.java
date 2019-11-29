@@ -4044,6 +4044,11 @@ public class NewJavaToKotlinConverterSingleFileTestGenerated extends AbstractNew
             runTest("nj2k/testData/newJ2k/overloads/Annotations.java");
         }
 
+        @TestMetadata("ConflictParameterName.java")
+        public void testConflictParameterName() throws Exception {
+            runTest("nj2k/testData/newJ2k/overloads/ConflictParameterName.java");
+        }
+
         @TestMetadata("Override.java")
         public void testOverride() throws Exception {
             runTest("nj2k/testData/newJ2k/overloads/Override.java");
@@ -4171,6 +4176,11 @@ public class NewJavaToKotlinConverterSingleFileTestGenerated extends AbstractNew
             runTest("nj2k/testData/newJ2k/postProcessing/AnonymousObject.java");
         }
 
+        @TestMetadata("ConvertConcatenationToRawString.java")
+        public void testConvertConcatenationToRawString() throws Exception {
+            runTest("nj2k/testData/newJ2k/postProcessing/ConvertConcatenationToRawString.java");
+        }
+
         @TestMetadata("GetOperator.java")
         public void testGetOperator() throws Exception {
             runTest("nj2k/testData/newJ2k/postProcessing/GetOperator.java");
@@ -4224,6 +4234,11 @@ public class NewJavaToKotlinConverterSingleFileTestGenerated extends AbstractNew
         @TestMetadata("RedunduntTypeCastAndProhibitedInline.java")
         public void testRedunduntTypeCastAndProhibitedInline() throws Exception {
             runTest("nj2k/testData/newJ2k/postProcessing/RedunduntTypeCastAndProhibitedInline.java");
+        }
+
+        @TestMetadata("SortModifiers.java")
+        public void testSortModifiers() throws Exception {
+            runTest("nj2k/testData/newJ2k/postProcessing/SortModifiers.java");
         }
 
         @TestMetadata("SyntheticExtensionPropertyAccess.java")
