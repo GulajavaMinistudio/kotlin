@@ -489,6 +489,11 @@ public class FirDiagnosticsWithStdlibTestGenerated extends AbstractFirDiagnostic
             runTest("compiler/fir/resolve/testData/resolve/stdlib/j+k/LoggerInstance.kt");
         }
 
+        @TestMetadata("MapEntry.kt")
+        public void testMapEntry() throws Exception {
+            runTest("compiler/fir/resolve/testData/resolve/stdlib/j+k/MapEntry.kt");
+        }
+
         @TestMetadata("MyException.kt")
         public void testMyException() throws Exception {
             runTest("compiler/fir/resolve/testData/resolve/stdlib/j+k/MyException.kt");
@@ -527,6 +532,11 @@ public class FirDiagnosticsWithStdlibTestGenerated extends AbstractFirDiagnostic
         @TestMetadata("StaticGenericMethod.kt")
         public void testStaticGenericMethod() throws Exception {
             runTest("compiler/fir/resolve/testData/resolve/stdlib/j+k/StaticGenericMethod.kt");
+        }
+
+        @TestMetadata("SyntheticAfterFiltering.kt")
+        public void testSyntheticAfterFiltering() throws Exception {
+            runTest("compiler/fir/resolve/testData/resolve/stdlib/j+k/SyntheticAfterFiltering.kt");
         }
 
         @TestMetadata("SyntheticWithForEach.kt")
