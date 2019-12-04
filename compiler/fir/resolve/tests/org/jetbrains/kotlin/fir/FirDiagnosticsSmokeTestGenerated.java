@@ -3430,6 +3430,11 @@ public class FirDiagnosticsSmokeTestGenerated extends AbstractFirDiagnosticsSmok
             runTest("compiler/testData/diagnostics/tests/collectionLiterals/collectionLiteralsAsPrimitiveArrays.kt");
         }
 
+        @TestMetadata("collectionLiteralsOutsideOfAnnotations.kt")
+        public void testCollectionLiteralsOutsideOfAnnotations() throws Exception {
+            runTest("compiler/testData/diagnostics/tests/collectionLiterals/collectionLiteralsOutsideOfAnnotations.kt");
+        }
+
         @TestMetadata("collectionLiteralsWithVarargs.kt")
         public void testCollectionLiteralsWithVarargs() throws Exception {
             runTest("compiler/testData/diagnostics/tests/collectionLiterals/collectionLiteralsWithVarargs.kt");
@@ -10432,6 +10437,11 @@ public class FirDiagnosticsSmokeTestGenerated extends AbstractFirDiagnosticsSmok
             @TestMetadata("recursiveJavaTypeWithStarProjection.kt")
             public void testRecursiveJavaTypeWithStarProjection() throws Exception {
                 runTest("compiler/testData/diagnostics/tests/inference/constraints/recursiveJavaTypeWithStarProjection.kt");
+            }
+
+            @TestMetadata("remainConstraintContainingTypeWithoutProjection.kt")
+            public void testRemainConstraintContainingTypeWithoutProjection() throws Exception {
+                runTest("compiler/testData/diagnostics/tests/inference/constraints/remainConstraintContainingTypeWithoutProjection.kt");
             }
 
             @TestMetadata("returnLambdaFromLambda.kt")
