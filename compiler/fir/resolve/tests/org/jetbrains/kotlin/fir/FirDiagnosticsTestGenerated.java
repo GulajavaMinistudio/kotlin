@@ -143,6 +143,11 @@ public class FirDiagnosticsTestGenerated extends AbstractFirDiagnosticsTest {
         runTest("compiler/fir/resolve/testData/resolve/genericFunctions.kt");
     }
 
+    @TestMetadata("intersectionScope.kt")
+    public void testIntersectionScope() throws Exception {
+        runTest("compiler/fir/resolve/testData/resolve/intersectionScope.kt");
+    }
+
     @TestMetadata("intersectionTypes.kt")
     public void testIntersectionTypes() throws Exception {
         runTest("compiler/fir/resolve/testData/resolve/intersectionTypes.kt");
@@ -1061,11 +1066,6 @@ public class FirDiagnosticsTestGenerated extends AbstractFirDiagnosticsTest {
             KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("compiler/fir/resolve/testData/resolve/problems"), Pattern.compile("^([^.]+)\\.kt$"), null, true);
         }
 
-        @TestMetadata("ambiguityOnExtensionFunctions.kt")
-        public void testAmbiguityOnExtensionFunctions() throws Exception {
-            runTest("compiler/fir/resolve/testData/resolve/problems/ambiguityOnExtensionFunctions.kt");
-        }
-
         @TestMetadata("asImports.kt")
         public void testAsImports() throws Exception {
             runTest("compiler/fir/resolve/testData/resolve/problems/asImports.kt");
@@ -1089,6 +1089,11 @@ public class FirDiagnosticsTestGenerated extends AbstractFirDiagnosticsTest {
         @TestMetadata("defaultJavaImportHiding.kt")
         public void testDefaultJavaImportHiding() throws Exception {
             runTest("compiler/fir/resolve/testData/resolve/problems/defaultJavaImportHiding.kt");
+        }
+
+        @TestMetadata("definetelyNotNullForTypeParameter.kt")
+        public void testDefinetelyNotNullForTypeParameter() throws Exception {
+            runTest("compiler/fir/resolve/testData/resolve/problems/definetelyNotNullForTypeParameter.kt");
         }
 
         @TestMetadata("definitelyNotNullAmbiguity.kt")

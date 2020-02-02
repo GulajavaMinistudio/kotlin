@@ -260,7 +260,18 @@ fun createKotlinLibraryComponents(
     }
 }
 
+@Deprecated("Use resolveSingleFileKlib() instead", replaceWith = ReplaceWith("resolveSingleFileKlib()"))
 fun createKotlinLibrary(libraryFile: File): KotlinLibrary = resolveSingleFileKlib(libraryFile)
+
+fun isKotlinLibrary(libraryFile: File): Boolean = try {
+    resolveSingleFileKlib(libraryFile)
+    true
+} catch (e: Throwable) {
+    false
+}
+
+fun isKotlinLibrary(libraryFile: java.io.File): Boolean =
+    isKotlinLibrary(File(libraryFile.absolutePath))
 
 val File.isPre_1_4_Library: Boolean
     get() {
