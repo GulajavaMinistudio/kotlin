@@ -233,6 +233,11 @@ public class FirDiagnosticsWithStdlibTestGenerated extends AbstractFirDiagnostic
         runTest("compiler/fir/analysis-tests/testData/resolveWithStdlib/simpleLazy.kt");
     }
 
+    @TestMetadata("stringConstructors.kt")
+    public void testStringConstructors() throws Exception {
+        runTest("compiler/fir/analysis-tests/testData/resolveWithStdlib/stringConstructors.kt");
+    }
+
     @TestMetadata("toSortedMapWithComparator.kt")
     public void testToSortedMapWithComparator() throws Exception {
         runTest("compiler/fir/analysis-tests/testData/resolveWithStdlib/toSortedMapWithComparator.kt");
@@ -866,6 +871,11 @@ public class FirDiagnosticsWithStdlibTestGenerated extends AbstractFirDiagnostic
         @TestMetadata("invokePriority.kt")
         public void testInvokePriority() throws Exception {
             runTest("compiler/fir/analysis-tests/testData/resolveWithStdlib/problems/invokePriority.kt");
+        }
+
+        @TestMetadata("invokePriorityComplex.kt")
+        public void testInvokePriorityComplex() throws Exception {
+            runTest("compiler/fir/analysis-tests/testData/resolveWithStdlib/problems/invokePriorityComplex.kt");
         }
 
         @TestMetadata("KJKComplexHierarchyNestedLoop.kt")

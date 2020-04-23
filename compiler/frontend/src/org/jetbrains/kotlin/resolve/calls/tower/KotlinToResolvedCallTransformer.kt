@@ -290,8 +290,10 @@ class KotlinToResolvedCallTransformer(
                 is ArgumentMatch -> {
                     parameter = argumentMapping.valueParameter
 
-                    val expectedType = resolvedCall.getExpectedTypeForSamConvertedArgument(valueArgument)
-                        ?: getEffectiveExpectedType(argumentMapping.valueParameter, valueArgument, context)
+                    val expectedType =
+                        resolvedCall.getExpectedTypeForSamConvertedArgument(valueArgument)
+                            ?: resolvedCall.getExpectedTypeForSuspendConvertedArgument(valueArgument)
+                            ?: getEffectiveExpectedType(argumentMapping.valueParameter, valueArgument, context)
                     Pair(
                         expectedType,
                         CallPosition.ValueArgumentPosition(resolvedCall, argumentMapping.valueParameter, valueArgument),
@@ -655,7 +657,8 @@ class NewResolvedCallImpl<D : CallableDescriptor>(
     private var extensionReceiver = resolvedCallAtom.extensionReceiverArgument?.receiver?.receiverValue
     private var dispatchReceiver = resolvedCallAtom.dispatchReceiverArgument?.receiver?.receiverValue
     private var smartCastDispatchReceiverType: KotlinType? = null
-    private var expedtedTypeForSamConvertedArgumentMap: MutableMap<ValueArgument, UnwrappedType>? = null
+    private var expectedTypeForSamConvertedArgumentMap: MutableMap<ValueArgument, UnwrappedType>? = null
+    private var expectedTypeForSuspendConvertedArgumentMap: MutableMap<ValueArgument, UnwrappedType>? = null
     private var argumentTypeForConstantConvertedMap: MutableMap<KtExpression, IntegerValueTypeConstant>? = null
 
 
@@ -737,6 +740,7 @@ class NewResolvedCallImpl<D : CallableDescriptor>(
         }
 
         calculateExpectedTypeForSamConvertedArgumentMap(substitutor)
+        calculateExpectedTypeForSuspendConvertedArgumentMap(substitutor)
         calculateExpectedTypeForConstantConvertedArgumentMap()
     }
 
@@ -803,7 +807,10 @@ class NewResolvedCallImpl<D : CallableDescriptor>(
     }
 
     fun getExpectedTypeForSamConvertedArgument(valueArgument: ValueArgument): UnwrappedType? =
-        expedtedTypeForSamConvertedArgumentMap?.get(valueArgument)
+        expectedTypeForSamConvertedArgumentMap?.get(valueArgument)
+
+    fun getExpectedTypeForSuspendConvertedArgument(valueArgument: ValueArgument): UnwrappedType? =
+        expectedTypeForSuspendConvertedArgumentMap?.get(valueArgument)
 
     private fun calculateExpectedTypeForConstantConvertedArgumentMap() {
         if (resolvedCallAtom.argumentsWithConstantConversion.isEmpty()) return
@@ -818,12 +825,23 @@ class NewResolvedCallImpl<D : CallableDescriptor>(
     private fun calculateExpectedTypeForSamConvertedArgumentMap(substitutor: NewTypeSubstitutor?) {
         if (resolvedCallAtom.argumentsWithConversion.isEmpty()) return
 
-        expedtedTypeForSamConvertedArgumentMap = hashMapOf()
+        expectedTypeForSamConvertedArgumentMap = hashMapOf()
         for ((argument, description) in resolvedCallAtom.argumentsWithConversion) {
             val typeWithFreshVariables =
                 resolvedCallAtom.freshVariablesSubstitutor.safeSubstitute(description.convertedTypeByCandidateParameter)
             val expectedType = substitutor?.safeSubstitute(typeWithFreshVariables) ?: typeWithFreshVariables
-            expedtedTypeForSamConvertedArgumentMap!![argument.psiCallArgument.valueArgument] = expectedType
+            expectedTypeForSamConvertedArgumentMap!![argument.psiCallArgument.valueArgument] = expectedType
+        }
+    }
+
+    private fun calculateExpectedTypeForSuspendConvertedArgumentMap(substitutor: NewTypeSubstitutor?) {
+        if (resolvedCallAtom.argumentsWithSuspendConversion.isEmpty()) return
+
+        expectedTypeForSuspendConvertedArgumentMap = hashMapOf()
+        for ((argument, convertedType) in resolvedCallAtom.argumentsWithSuspendConversion) {
+            val typeWithFreshVariables = resolvedCallAtom.freshVariablesSubstitutor.safeSubstitute(convertedType)
+            val expectedType = substitutor?.safeSubstitute(typeWithFreshVariables) ?: typeWithFreshVariables
+            expectedTypeForSuspendConvertedArgumentMap!![argument.psiCallArgument.valueArgument] = expectedType
         }
     }
 

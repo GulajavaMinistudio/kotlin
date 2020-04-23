@@ -214,6 +214,7 @@ class Fir2IrDeclarationStorage(
                         if (functionSymbol is FirNamedFunctionSymbol) {
                             val fakeOverrideSymbol =
                                 FirClassSubstitutionScope.createFakeOverrideFunction(session, functionSymbol.fir, functionSymbol)
+                            classifierStorage.preCacheTypeParameters(functionSymbol.fir)
                             irClass.declarations += createIrFunction(fakeOverrideSymbol.fir, irClass)
                         }
                     }
@@ -221,6 +222,7 @@ class Fir2IrDeclarationStorage(
                         if (propertySymbol is FirPropertySymbol) {
                             val fakeOverrideSymbol =
                                 FirClassSubstitutionScope.createFakeOverrideProperty(session, propertySymbol.fir, propertySymbol)
+                            classifierStorage.preCacheTypeParameters(propertySymbol.fir)
                             irClass.declarations += createIrProperty(fakeOverrideSymbol.fir, irClass)
                         }
                     }
@@ -416,6 +418,9 @@ class Fir2IrDeclarationStorage(
         val name = simpleFunction?.name
             ?: if (isLambda) Name.special("<anonymous>") else Name.special("<no name provided>")
         val visibility = simpleFunction?.visibility ?: Visibilities.LOCAL
+        val isSuspend =
+            if (isLambda) ((function as FirAnonymousFunction).typeRef as? FirResolvedTypeRef)?.isSuspend == true
+            else simpleFunction?.isSuspend == true
         val created = function.convertWithOffsets { startOffset, endOffset ->
             enterScope(descriptor)
             val result = symbolTable.declareSimpleFunction(startOffset, endOffset, origin, descriptor) { symbol ->
@@ -427,7 +432,7 @@ class Fir2IrDeclarationStorage(
                     isInline = simpleFunction?.isInline == true,
                     isExternal = simpleFunction?.isExternal == true,
                     isTailrec = simpleFunction?.isTailRec == true,
-                    isSuspend = simpleFunction?.isSuspend == true,
+                    isSuspend = isSuspend,
                     isExpect = simpleFunction?.isExpect == true,
                     isFakeOverride = updatedOrigin == IrDeclarationOrigin.FAKE_OVERRIDE,
                     isOperator = simpleFunction?.isOperator == true

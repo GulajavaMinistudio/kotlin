@@ -16,6 +16,7 @@ import org.jetbrains.kotlin.fir.resolve.calls.Candidate
 import org.jetbrains.kotlin.fir.resolve.calls.FirNamedReferenceWithCandidate
 import org.jetbrains.kotlin.fir.resolve.constructFunctionalTypeRef
 import org.jetbrains.kotlin.fir.resolve.inference.isBuiltinFunctionalType
+import org.jetbrains.kotlin.fir.resolve.inference.isSuspendFunctionType
 import org.jetbrains.kotlin.fir.resolve.inference.returnType
 import org.jetbrains.kotlin.fir.resolve.substitution.ConeSubstitutor
 import org.jetbrains.kotlin.fir.resolve.transformers.body.resolve.resultType
@@ -329,9 +330,8 @@ class FirCallCompletionResultsWriterTransformer(
         anonymousFunction: FirAnonymousFunction,
         data: ExpectedArgumentType?,
     ): CompositeTransformResult<FirStatement> {
-        val expectedReturnType = data?.getExpectedType(anonymousFunction)
-            ?.takeIf { it.isBuiltinFunctionalType(session) }
-            ?.returnType(session) as? ConeClassLikeType
+        val expectedType = data?.getExpectedType(anonymousFunction)?.takeIf { it.isBuiltinFunctionalType(session) }
+        val expectedReturnType = expectedType?.returnType(session) as? ConeClassLikeType
 
         val initialType = anonymousFunction.returnTypeRef.coneTypeSafe<ConeKotlinType>()
         if (initialType != null) {
@@ -341,9 +341,20 @@ class FirCallCompletionResultsWriterTransformer(
 
             anonymousFunction.transformReturnTypeRef(StoreType, resultType)
 
-            anonymousFunction.replaceTypeRef(anonymousFunction.constructFunctionalTypeRef(session))
+            anonymousFunction.replaceTypeRef(
+                anonymousFunction.constructFunctionalTypeRef(session, isSuspend = expectedType?.isSuspendFunctionType(session) == true)
+            )
         }
-        return transformElement(anonymousFunction, null)
+        val result = transformElement(anonymousFunction, null)
+        val resultFunction = result.single
+        if (resultFunction.returnTypeRef.coneTypeSafe<ConeIntegerLiteralType>() != null) {
+            val blockType = resultFunction.body?.typeRef?.coneTypeSafe<ConeKotlinType>()
+            resultFunction.replaceReturnTypeRef(resultFunction.returnTypeRef.withReplacedConeType(blockType))
+            resultFunction.replaceTypeRef(
+                resultFunction.constructFunctionalTypeRef(session, isSuspend = expectedType?.isSuspendFunctionType(session) == true)
+            )
+        }
+        return result
     }
 
     override fun transformBlock(block: FirBlock, data: ExpectedArgumentType?): CompositeTransformResult<FirStatement> {

@@ -1881,6 +1881,11 @@ public class DiagnosticsUsingJavacTestGenerated extends AbstractDiagnosticsUsing
                 runTest("compiler/testData/diagnostics/tests/callableReference/kt34314_lambda.kt");
             }
 
+            @TestMetadata("kt35105.kt")
+            public void testKt35105() throws Exception {
+                runTest("compiler/testData/diagnostics/tests/callableReference/kt35105.kt");
+            }
+
             @TestMetadata("kt35959.kt")
             public void testKt35959() throws Exception {
                 runTest("compiler/testData/diagnostics/tests/callableReference/kt35959.kt");
@@ -10133,6 +10138,11 @@ public class DiagnosticsUsingJavacTestGenerated extends AbstractDiagnosticsUsing
                 runTest("compiler/testData/diagnostics/tests/inference/kt36819.kt");
             }
 
+            @TestMetadata("kt37853.kt")
+            public void testKt37853() throws Exception {
+                runTest("compiler/testData/diagnostics/tests/inference/kt37853.kt");
+            }
+
             @TestMetadata("kt6175.kt")
             public void testKt6175() throws Exception {
                 runTest("compiler/testData/diagnostics/tests/inference/kt6175.kt");
@@ -13465,6 +13475,11 @@ public class DiagnosticsUsingJavacTestGenerated extends AbstractDiagnosticsUsing
                 @TestMetadata("inheritedStaticSam.kt")
                 public void testInheritedStaticSam() throws Exception {
                     runTest("compiler/testData/diagnostics/tests/j+k/sam/inheritedStaticSam.kt");
+                }
+
+                @TestMetadata("kt37920.kt")
+                public void testKt37920() throws Exception {
+                    runTest("compiler/testData/diagnostics/tests/j+k/sam/kt37920.kt");
                 }
 
                 @TestMetadata("privateCandidatesWithWrongArguments.kt")
@@ -22978,6 +22993,59 @@ public class DiagnosticsUsingJavacTestGenerated extends AbstractDiagnosticsUsing
                 public void testOnTypeParameter() throws Exception {
                     runTest("compiler/testData/diagnostics/tests/suppress/oneWarning/onTypeParameter.kt");
                 }
+            }
+        }
+
+        @TestMetadata("compiler/testData/diagnostics/tests/suspendConversion")
+        @TestDataPath("$PROJECT_ROOT")
+        @RunWith(JUnit3RunnerWithInners.class)
+        public static class SuspendConversion extends AbstractDiagnosticsUsingJavacTest {
+            private void runTest(String testDataFilePath) throws Exception {
+                KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
+            }
+
+            public void testAllFilesPresentInSuspendConversion() throws Exception {
+                KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("compiler/testData/diagnostics/tests/suspendConversion"), Pattern.compile("^(.+)\\.kt$"), Pattern.compile("^(.+)\\.fir\\.kts?$"), true);
+            }
+
+            @TestMetadata("basicSuspendConversion.kt")
+            public void testBasicSuspendConversion() throws Exception {
+                runTest("compiler/testData/diagnostics/tests/suspendConversion/basicSuspendConversion.kt");
+            }
+
+            @TestMetadata("basicSuspendConversionForCallableReference.kt")
+            public void testBasicSuspendConversionForCallableReference() throws Exception {
+                runTest("compiler/testData/diagnostics/tests/suspendConversion/basicSuspendConversionForCallableReference.kt");
+            }
+
+            @TestMetadata("basicSuspendConversionGenerics.kt")
+            public void testBasicSuspendConversionGenerics() throws Exception {
+                runTest("compiler/testData/diagnostics/tests/suspendConversion/basicSuspendConversionGenerics.kt");
+            }
+
+            @TestMetadata("chainedFunSuspendConversionForSimpleExpression.kt")
+            public void testChainedFunSuspendConversionForSimpleExpression() throws Exception {
+                runTest("compiler/testData/diagnostics/tests/suspendConversion/chainedFunSuspendConversionForSimpleExpression.kt");
+            }
+
+            @TestMetadata("severalConversionsInOneCall.kt")
+            public void testSeveralConversionsInOneCall() throws Exception {
+                runTest("compiler/testData/diagnostics/tests/suspendConversion/severalConversionsInOneCall.kt");
+            }
+
+            @TestMetadata("suspendConversionDisabled.kt")
+            public void testSuspendConversionDisabled() throws Exception {
+                runTest("compiler/testData/diagnostics/tests/suspendConversion/suspendConversionDisabled.kt");
+            }
+
+            @TestMetadata("suspendConversionWithFunInterfaces.kt")
+            public void testSuspendConversionWithFunInterfaces() throws Exception {
+                runTest("compiler/testData/diagnostics/tests/suspendConversion/suspendConversionWithFunInterfaces.kt");
+            }
+
+            @TestMetadata("suspendConversionWithReferenceAdaptation.kt")
+            public void testSuspendConversionWithReferenceAdaptation() throws Exception {
+                runTest("compiler/testData/diagnostics/tests/suspendConversion/suspendConversionWithReferenceAdaptation.kt");
             }
         }
 

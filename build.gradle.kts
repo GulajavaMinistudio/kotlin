@@ -4,7 +4,6 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import proguard.gradle.ProGuardTask
 
 buildscript {
-
     val cacheRedirectorEnabled = findProperty("cacheRedirectorEnabled")?.toString()?.toBoolean() == true
 
     kotlinBootstrapFrom(BootstrapOption.BintrayBootstrap(kotlinBuildProperties.kotlinBootstrapVersion!!, cacheRedirectorEnabled))
@@ -65,7 +64,11 @@ val configuredJdks: List<JdkId> =
 
 val defaultSnapshotVersion: String by extra
 val buildNumber by extra(findProperty("build.number")?.toString() ?: defaultSnapshotVersion)
-val kotlinVersion by extra(findProperty("deployVersion")?.toString() ?: buildNumber)
+val kotlinVersion by extra(
+        findProperty("deployVersion")?.toString()?.let { deploySnapshotStr ->
+            if (deploySnapshotStr != "default.snapshot") deploySnapshotStr else defaultSnapshotVersion
+        } ?: buildNumber
+)
 
 val kotlinLanguageVersion by extra("1.4")
 
@@ -181,7 +184,7 @@ extra["versions.kotlinx-collections-immutable-jvm"] = immutablesVersion
 extra["versions.ktor-network"] = "1.0.1"
 
 if (!project.hasProperty("versions.kotlin-native")) {
-    extra["versions.kotlin-native"] = "1.4-M2-dev-15123"
+    extra["versions.kotlin-native"] = "1.4-M3-dev-15378"
 }
 
 val intellijUltimateEnabled by extra(project.kotlinBuildProperties.intellijUltimateEnabled)
@@ -365,6 +368,7 @@ allprojects {
         "-Xread-deserialized-contracts",
         "-Xjvm-default=compatibility",
         "-Xno-optimized-callable-references",
+        "-Xno-kotlin-nothing-value-exception",
         "-progressive".takeIf { hasProperty("test.progressive.mode") }
     )
 
@@ -600,6 +604,7 @@ tasks {
 //        dependsOn(":kotlin-scripting-jvm-host-test:embeddableTest")
         dependsOn(":kotlin-scripting-jsr223-test:embeddableTest")
         dependsOn(":kotlin-main-kts-test:test")
+        dependsOn(":kotlin-scripting-ide-services-test:test")
     }
 
     register("compilerTest") {
@@ -609,6 +614,7 @@ tasks {
         dependsOn("nativeCompilerTest")
         dependsOn("firCompilerTest")
 
+        dependsOn(":kotlin-daemon-tests:test")
         dependsOn("scriptingTest")
         dependsOn(":kotlin-build-common:test")
         dependsOn(":compiler:incremental-compilation-impl:test")
