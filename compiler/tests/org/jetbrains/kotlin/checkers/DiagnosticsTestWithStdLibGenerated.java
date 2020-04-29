@@ -226,6 +226,11 @@ public class DiagnosticsTestWithStdLibGenerated extends AbstractDiagnosticsTestW
             runTest("compiler/testData/diagnostics/testsWithStdLib/annotations/targetuse.kt");
         }
 
+        @TestMetadata("throws.kt")
+        public void testThrows() throws Exception {
+            runTest("compiler/testData/diagnostics/testsWithStdLib/annotations/throws.kt");
+        }
+
         @TestMetadata("TransientOnDelegate.kt")
         public void testTransientOnDelegate() throws Exception {
             runTest("compiler/testData/diagnostics/testsWithStdLib/annotations/TransientOnDelegate.kt");
@@ -2037,6 +2042,11 @@ public class DiagnosticsTestWithStdLibGenerated extends AbstractDiagnosticsTestW
                 runTest("compiler/testData/diagnostics/testsWithStdLib/coroutines/inference/kt36220.kt");
             }
 
+            @TestMetadata("kt38420.kt")
+            public void testKt38420() throws Exception {
+                runTest("compiler/testData/diagnostics/testsWithStdLib/coroutines/inference/kt38420.kt");
+            }
+
             @TestMetadata("nestedLambdaInferenceWithListMap.kt")
             public void testNestedLambdaInferenceWithListMap() throws Exception {
                 runTest("compiler/testData/diagnostics/testsWithStdLib/coroutines/inference/nestedLambdaInferenceWithListMap.kt");
@@ -2919,6 +2929,11 @@ public class DiagnosticsTestWithStdLibGenerated extends AbstractDiagnosticsTestW
         @TestMetadata("kt37627.kt")
         public void testKt37627() throws Exception {
             runTest("compiler/testData/diagnostics/testsWithStdLib/inference/kt37627.kt");
+        }
+
+        @TestMetadata("kt38143.kt")
+        public void testKt38143() throws Exception {
+            runTest("compiler/testData/diagnostics/testsWithStdLib/inference/kt38143.kt");
         }
 
         @TestMetadata("kt4975.kt")

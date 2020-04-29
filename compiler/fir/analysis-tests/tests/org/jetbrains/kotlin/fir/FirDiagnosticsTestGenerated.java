@@ -826,6 +826,11 @@ public class FirDiagnosticsTestGenerated extends AbstractFirDiagnosticsTest {
             runTest("compiler/fir/analysis-tests/testData/resolve/diagnostics/notASupertype.kt");
         }
 
+        @TestMetadata("qualifiedSupertypeExtendedByOtherSupertype.kt")
+        public void testQualifiedSupertypeExtendedByOtherSupertype() throws Exception {
+            runTest("compiler/fir/analysis-tests/testData/resolve/diagnostics/qualifiedSupertypeExtendedByOtherSupertype.kt");
+        }
+
         @TestMetadata("redundantModifier.kt")
         public void testRedundantModifier() throws Exception {
             runTest("compiler/fir/analysis-tests/testData/resolve/diagnostics/redundantModifier.kt");
@@ -2176,6 +2181,11 @@ public class FirDiagnosticsTestGenerated extends AbstractFirDiagnosticsTest {
         @TestMetadata("exposedPropertyType.kt")
         public void testExposedPropertyType() throws Exception {
             runTest("compiler/fir/analysis-tests/testData/resolve/visibility/exposedPropertyType.kt");
+        }
+
+        @TestMetadata("exposedSupertype.kt")
+        public void testExposedSupertype() throws Exception {
+            runTest("compiler/fir/analysis-tests/testData/resolve/visibility/exposedSupertype.kt");
         }
 
         @TestMetadata("exposedTypeAlias.kt")

@@ -1246,6 +1246,11 @@ public class IrTextTestCaseGenerated extends AbstractIrTextTestCase {
             runTest("compiler/testData/ir/irText/expressions/stringTemplates.kt");
         }
 
+        @TestMetadata("suspendConversionOnArbitraryExpression.kt")
+        public void testSuspendConversionOnArbitraryExpression() throws Exception {
+            runTest("compiler/testData/ir/irText/expressions/suspendConversionOnArbitraryExpression.kt");
+        }
+
         @TestMetadata("temporaryInEnumEntryInitializer.kt")
         public void testTemporaryInEnumEntryInitializer() throws Exception {
             runTest("compiler/testData/ir/irText/expressions/temporaryInEnumEntryInitializer.kt");
@@ -1441,6 +1446,11 @@ public class IrTextTestCaseGenerated extends AbstractIrTextTestCase {
             @TestMetadata("kt37131.kt")
             public void testKt37131() throws Exception {
                 runTest("compiler/testData/ir/irText/expressions/callableReferences/kt37131.kt");
+            }
+
+            @TestMetadata("suspendConversion.kt")
+            public void testSuspendConversion() throws Exception {
+                runTest("compiler/testData/ir/irText/expressions/callableReferences/suspendConversion.kt");
             }
 
             @TestMetadata("typeArguments.kt")

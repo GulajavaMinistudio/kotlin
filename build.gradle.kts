@@ -184,7 +184,7 @@ extra["versions.kotlinx-collections-immutable-jvm"] = immutablesVersion
 extra["versions.ktor-network"] = "1.0.1"
 
 if (!project.hasProperty("versions.kotlin-native")) {
-    extra["versions.kotlin-native"] = "1.4-M3-dev-15378"
+    extra["versions.kotlin-native"] = "1.4-M3-dev-15453"
 }
 
 val intellijUltimateEnabled by extra(project.kotlinBuildProperties.intellijUltimateEnabled)
@@ -263,6 +263,7 @@ extra["compilerModules"] = arrayOf(
     ":core:type-system",
     ":compiler:fir:cones",
     ":compiler:fir:resolve",
+    ":compiler:fir:fir-serialization",
     ":compiler:fir:tree",
     ":compiler:fir:raw-fir:fir-common",
     ":compiler:fir:raw-fir:psi2fir",
@@ -358,7 +359,7 @@ allprojects {
         maven("https://jetbrains.bintray.com/intellij-third-party-dependencies")
         maven("https://dl.google.com/dl/android/maven2")
         bootstrapKotlinRepo?.let(::maven)
-        internalKotlinRepo?.let(::maven)
+        internalBootstrapRepo?.let(::maven)
     }
 
     configureJvmProject(javaHome!!, jvmTarget!!)
@@ -421,6 +422,9 @@ allprojects {
         register("listRuntimeJar") { listConfigurationContents("runtimeJar") }
 
         register("listDistJar") { listConfigurationContents("distJar") }
+
+        // Aggregate task for build related checks
+        register("checkBuild")
     }
 
     afterEvaluate {
@@ -456,9 +460,6 @@ allprojects {
             configurations.findByName("kotlinCompilerPluginClasspath")
                 ?.exclude("org.jetbrains.kotlin", "kotlin-scripting-compiler-embeddable")
         }
-
-        // Aggregate task for build related checks
-        tasks.register("checkBuild")
 
         apply(from = "$rootDir/gradle/cacheRedirector.gradle.kts")
     }
@@ -751,6 +752,14 @@ tasks {
 
     register("check") {
         dependsOn("test")
+    }
+
+    named("checkBuild") {
+        if (kotlinBuildProperties.isTeamcityBuild) {
+            doFirst {
+                println("##teamcity[setParameter name='bootstrap.kotlin.version' value='$bootstrapKotlinVersion']")
+            }
+        }
     }
 }
 

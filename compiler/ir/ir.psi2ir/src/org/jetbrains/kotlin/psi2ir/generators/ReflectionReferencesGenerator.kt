@@ -32,6 +32,7 @@ import org.jetbrains.kotlin.ir.expressions.impl.*
 import org.jetbrains.kotlin.ir.symbols.IrConstructorSymbol
 import org.jetbrains.kotlin.ir.symbols.IrFunctionSymbol
 import org.jetbrains.kotlin.ir.symbols.IrVariableSymbol
+import org.jetbrains.kotlin.ir.util.isImmutable
 import org.jetbrains.kotlin.ir.util.referenceClassifier
 import org.jetbrains.kotlin.ir.util.referenceFunction
 import org.jetbrains.kotlin.ir.util.withScope
@@ -75,12 +76,14 @@ class ReflectionReferencesGenerator(statementGenerator: StatementGenerator) : St
         val resolvedCall = getResolvedCall(ktCallableReference.callableReference)!!
         val resolvedDescriptor = resolvedCall.resultingDescriptor
 
-        val callBuilder = unwrapCallableDescriptorAndTypeArguments(resolvedCall, context.extensions.samConversion)
+        val callBuilder = unwrapCallableDescriptorAndTypeArguments(resolvedCall)
 
+        val callableReferenceType = getTypeInferredByFrontendOrFail(ktCallableReference)
         if (resolvedCall.valueArguments.isNotEmpty() ||
-            requiresCoercionToUnit(resolvedDescriptor, getTypeInferredByFrontendOrFail(ktCallableReference))
+            requiresCoercionToUnit(resolvedDescriptor, callableReferenceType) ||
+            requiresSuspendConversion(resolvedDescriptor, callableReferenceType)
         ) {
-            return generateAdaptedCallableReference(ktCallableReference, callBuilder)
+            return generateAdaptedCallableReference(ktCallableReference, callBuilder, callableReferenceType)
         }
 
         return statementGenerator.generateCallReceiver(
@@ -91,7 +94,7 @@ class ReflectionReferencesGenerator(statementGenerator: StatementGenerator) : St
         ).call { dispatchReceiverValue, extensionReceiverValue ->
             generateCallableReference(
                 ktCallableReference,
-                getTypeInferredByFrontendOrFail(ktCallableReference),
+                callableReferenceType,
                 callBuilder.descriptor,
                 callBuilder.typeArguments
             ).also { irCallableReference ->
@@ -106,9 +109,15 @@ class ReflectionReferencesGenerator(statementGenerator: StatementGenerator) : St
         return KotlinBuiltIns.isUnit(ktExpectedReturnType) && !KotlinBuiltIns.isUnit(descriptor.returnType!!)
     }
 
+    private fun requiresSuspendConversion(descriptor: CallableDescriptor, callableReferenceType: KotlinType): Boolean =
+        descriptor is FunctionDescriptor &&
+                !descriptor.isSuspend &&
+                callableReferenceType.isKSuspendFunctionType
+
     private fun generateAdaptedCallableReference(
         ktCallableReference: KtCallableReferenceExpression,
-        callBuilder: CallBuilder
+        callBuilder: CallBuilder,
+        callableReferenceType: KotlinType
     ): IrExpression {
         val adapteeDescriptor = callBuilder.descriptor
         if (adapteeDescriptor !is FunctionDescriptor) {
@@ -128,7 +137,7 @@ class ReflectionReferencesGenerator(statementGenerator: StatementGenerator) : St
         val ktExpectedParameterTypes = ktFunctionalTypeArguments.take(ktFunctionalTypeArguments.size - 1).map { it.type }
 
         val irAdapterFun =
-            createAdapterFun(startOffset, endOffset, adapteeDescriptor, ktExpectedParameterTypes, ktExpectedReturnType, callBuilder)
+            createAdapterFun(startOffset, endOffset, adapteeDescriptor, ktExpectedParameterTypes, ktExpectedReturnType, callBuilder, callableReferenceType)
         val irCall = createAdapteeCall(startOffset, endOffset, adapteeSymbol, callBuilder, irAdapterFun)
 
         irAdapterFun.body = IrBlockBodyImpl(startOffset, endOffset).apply {
@@ -229,10 +238,7 @@ class ReflectionReferencesGenerator(statementGenerator: StatementGenerator) : St
         this is IrGetObjectValue ||
                 this is IrGetEnumValue ||
                 this is IrConst<*> ||
-                this is IrGetValue && symbol.isBound && symbol.owner.isImmutable()
-
-    private fun IrValueDeclaration.isImmutable() =
-        this is IrValueParameter || this is IrVariable && !this.isVar
+                this is IrGetValue && symbol.isBound && symbol.owner.isImmutable
 
     private fun putAdaptedValueArguments(
         startOffset: Int,
@@ -326,8 +332,12 @@ class ReflectionReferencesGenerator(statementGenerator: StatementGenerator) : St
         ktExpectedParameterTypes: List<KotlinType>,
         ktExpectedReturnType: KotlinType,
         callBuilder: CallBuilder,
+        callableReferenceType: KotlinType
     ): IrSimpleFunction {
         val adapterFunctionDescriptor = WrappedSimpleFunctionDescriptor()
+
+        val hasSuspendConversion = !adapteeDescriptor.isSuspend &&
+                callableReferenceType.isKSuspendFunctionType
 
         return context.symbolTable.declareSimpleFunction(
             startOffset, endOffset,
@@ -345,7 +355,7 @@ class ReflectionReferencesGenerator(statementGenerator: StatementGenerator) : St
                 isInline = adapteeDescriptor.isInline, // TODO ?
                 isExternal = false,
                 isTailrec = false,
-                isSuspend = adapteeDescriptor.isSuspend, // TODO ?
+                isSuspend = adapteeDescriptor.isSuspend || hasSuspendConversion,
                 isOperator = adapteeDescriptor.isOperator, // TODO ?
                 isExpect = false,
                 isFakeOverride = false
