@@ -1,4 +1,5 @@
 // !LANGUAGE: +InlineClasses
+// IGNORE_BACKEND: JVM_IR
 
 inline class Foo(val x: Int)
 
@@ -13,7 +14,7 @@ object Test {
 // jvm signature: (I)V
 // generic signature: null
 
-// method: Test::asReturn
+// method: Test::asReturn-qUNOhfQ
 // jvm signature: ()I
 // generic signature: null
 

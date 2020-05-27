@@ -209,6 +209,11 @@ public class BytecodeTextTestGenerated extends AbstractBytecodeTextTest {
         runTest("compiler/testData/codegen/bytecodeText/jvmField.kt");
     }
 
+    @TestMetadata("jvmStaticInternalMangling.kt")
+    public void testJvmStaticInternalMangling() throws Exception {
+        runTest("compiler/testData/codegen/bytecodeText/jvmStaticInternalMangling.kt");
+    }
+
     @TestMetadata("kt10259.kt")
     public void testKt10259() throws Exception {
         runTest("compiler/testData/codegen/bytecodeText/kt10259.kt");
@@ -3452,19 +3457,14 @@ public class BytecodeTextTestGenerated extends AbstractBytecodeTextTest {
             runTest("compiler/testData/codegen/bytecodeText/lineNumbers/inlineCondition2.kt");
         }
 
+        @TestMetadata("inlineLambdaObjectInit.kt")
+        public void testInlineLambdaObjectInit() throws Exception {
+            runTest("compiler/testData/codegen/bytecodeText/lineNumbers/inlineLambdaObjectInit.kt");
+        }
+
         @TestMetadata("singleThen.kt")
         public void testSingleThen() throws Exception {
             runTest("compiler/testData/codegen/bytecodeText/lineNumbers/singleThen.kt");
-        }
-
-        @TestMetadata("stdlibInlineOnly.kt")
-        public void testStdlibInlineOnly() throws Exception {
-            runTest("compiler/testData/codegen/bytecodeText/lineNumbers/stdlibInlineOnly.kt");
-        }
-
-        @TestMetadata("stdlibInlineOnlyOneLine.kt")
-        public void testStdlibInlineOnlyOneLine() throws Exception {
-            runTest("compiler/testData/codegen/bytecodeText/lineNumbers/stdlibInlineOnlyOneLine.kt");
         }
 
         @TestMetadata("tryCatch.kt")

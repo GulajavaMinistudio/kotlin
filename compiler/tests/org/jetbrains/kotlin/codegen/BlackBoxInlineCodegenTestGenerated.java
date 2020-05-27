@@ -121,6 +121,11 @@ public class BlackBoxInlineCodegenTestGenerated extends AbstractBlackBoxInlineCo
             runTest("compiler/testData/codegen/boxInline/anonymousObject/defineClass.kt");
         }
 
+        @TestMetadata("inlineCallInsideInlineLambda.kt")
+        public void testInlineCallInsideInlineLambda() throws Exception {
+            runTest("compiler/testData/codegen/boxInline/anonymousObject/inlineCallInsideInlineLambda.kt");
+        }
+
         @TestMetadata("kt13133.kt")
         public void testKt13133() throws Exception {
             runTest("compiler/testData/codegen/boxInline/anonymousObject/kt13133.kt");
@@ -3516,6 +3521,16 @@ public class BlackBoxInlineCodegenTestGenerated extends AbstractBlackBoxInlineCo
             @TestMetadata("reifiedProperty.kt")
             public void testReifiedProperty() throws Exception {
                 runTest("compiler/testData/codegen/boxInline/smap/inlineOnly/reifiedProperty.kt");
+            }
+
+            @TestMetadata("stdlibInlineOnly.kt")
+            public void testStdlibInlineOnly() throws Exception {
+                runTest("compiler/testData/codegen/boxInline/smap/inlineOnly/stdlibInlineOnly.kt");
+            }
+
+            @TestMetadata("stdlibInlineOnlyOneLine.kt")
+            public void testStdlibInlineOnlyOneLine() throws Exception {
+                runTest("compiler/testData/codegen/boxInline/smap/inlineOnly/stdlibInlineOnlyOneLine.kt");
             }
         }
 
