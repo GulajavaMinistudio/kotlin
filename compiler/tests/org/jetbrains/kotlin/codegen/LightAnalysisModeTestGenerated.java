@@ -14198,6 +14198,11 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
             runTest("compiler/testData/codegen/box/inlineClasses/noAssertionsOnInlineClassBasedOnNullableType.kt");
         }
 
+        @TestMetadata("noReturnTypeMangling.kt")
+        public void testNoReturnTypeMangling() throws Exception {
+            runTest("compiler/testData/codegen/box/inlineClasses/noReturnTypeMangling.kt");
+        }
+
         @TestMetadata("nullableEqeqNonNull.kt")
         public void testNullableEqeqNonNull() throws Exception {
             runTest("compiler/testData/codegen/box/inlineClasses/nullableEqeqNonNull.kt");
@@ -25387,6 +25392,11 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
                 runTest("compiler/testData/codegen/box/reflection/methodsFromAny/parametersEqualsHashCode.kt");
             }
 
+            @TestMetadata("parametersEqualsWithClearCaches.kt")
+            public void testParametersEqualsWithClearCaches() throws Exception {
+                runTest("compiler/testData/codegen/box/reflection/methodsFromAny/parametersEqualsWithClearCaches.kt");
+            }
+
             @TestMetadata("parametersToString.kt")
             public void testParametersToString() throws Exception {
                 runTest("compiler/testData/codegen/box/reflection/methodsFromAny/parametersToString.kt");
@@ -25410,6 +25420,11 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
             @TestMetadata("typeParametersEqualsHashCode.kt")
             public void testTypeParametersEqualsHashCode() throws Exception {
                 runTest("compiler/testData/codegen/box/reflection/methodsFromAny/typeParametersEqualsHashCode.kt");
+            }
+
+            @TestMetadata("typeParametersEqualsWithClearCaches.kt")
+            public void testTypeParametersEqualsWithClearCaches() throws Exception {
+                runTest("compiler/testData/codegen/box/reflection/methodsFromAny/typeParametersEqualsWithClearCaches.kt");
             }
 
             @TestMetadata("typeParametersToString.kt")
@@ -26296,6 +26311,16 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
             @TestMetadata("declarationSiteVariance.kt")
             public void testDeclarationSiteVariance() throws Exception {
                 runTest("compiler/testData/codegen/box/reflection/typeParameters/declarationSiteVariance.kt");
+            }
+
+            @TestMetadata("innerGenericParameter.kt")
+            public void testInnerGenericParameter() throws Exception {
+                runTest("compiler/testData/codegen/box/reflection/typeParameters/innerGenericParameter.kt");
+            }
+
+            @TestMetadata("javaGenericTypeConstructor.kt")
+            public void testJavaGenericTypeConstructor() throws Exception {
+                runTest("compiler/testData/codegen/box/reflection/typeParameters/javaGenericTypeConstructor.kt");
             }
 
             @TestMetadata("typeParametersAndNames.kt")
