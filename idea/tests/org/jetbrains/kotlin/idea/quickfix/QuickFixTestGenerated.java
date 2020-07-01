@@ -550,6 +550,21 @@ public class QuickFixTestGenerated extends AbstractQuickFixTest {
             runTest("idea/testData/quickfix/addDefaultConstructor/expect.kt");
         }
 
+        @TestMetadata("expectAnnotation.kt")
+        public void testExpectAnnotation() throws Exception {
+            runTest("idea/testData/quickfix/addDefaultConstructor/expectAnnotation.kt");
+        }
+
+        @TestMetadata("expectAnnotation2.kt")
+        public void testExpectAnnotation2() throws Exception {
+            runTest("idea/testData/quickfix/addDefaultConstructor/expectAnnotation2.kt");
+        }
+
+        @TestMetadata("expectAnnotation3.kt")
+        public void testExpectAnnotation3() throws Exception {
+            runTest("idea/testData/quickfix/addDefaultConstructor/expectAnnotation3.kt");
+        }
+
         @TestMetadata("expectInterface.kt")
         public void testExpectInterface() throws Exception {
             runTest("idea/testData/quickfix/addDefaultConstructor/expectInterface.kt");
@@ -2323,6 +2338,21 @@ public class QuickFixTestGenerated extends AbstractQuickFixTest {
             runTest("idea/testData/quickfix/changeSignature/addFunctionParameterLongNameRuntime.kt");
         }
 
+        @TestMetadata("addFunctionParameterWithAnonymousFunction.kt")
+        public void testAddFunctionParameterWithAnonymousFunction() throws Exception {
+            runTest("idea/testData/quickfix/changeSignature/addFunctionParameterWithAnonymousFunction.kt");
+        }
+
+        @TestMetadata("addFunctionParameterWithFunctionReference.kt")
+        public void testAddFunctionParameterWithFunctionReference() throws Exception {
+            runTest("idea/testData/quickfix/changeSignature/addFunctionParameterWithFunctionReference.kt");
+        }
+
+        @TestMetadata("addFunctionParameterWithLambda.kt")
+        public void testAddFunctionParameterWithLambda() throws Exception {
+            runTest("idea/testData/quickfix/changeSignature/addFunctionParameterWithLambda.kt");
+        }
+
         @TestMetadata("addFunctionParameterWithSmartCast.kt")
         public void testAddFunctionParameterWithSmartCast() throws Exception {
             runTest("idea/testData/quickfix/changeSignature/addFunctionParameterWithSmartCast.kt");
@@ -2331,6 +2361,11 @@ public class QuickFixTestGenerated extends AbstractQuickFixTest {
         @TestMetadata("addFunctionParameterWithSmartcastedArgument.kt")
         public void testAddFunctionParameterWithSmartcastedArgument() throws Exception {
             runTest("idea/testData/quickfix/changeSignature/addFunctionParameterWithSmartcastedArgument.kt");
+        }
+
+        @TestMetadata("addFunctionParameterWithSuspendFunctionReference.kt")
+        public void testAddFunctionParameterWithSuspendFunctionReference() throws Exception {
+            runTest("idea/testData/quickfix/changeSignature/addFunctionParameterWithSuspendFunctionReference.kt");
         }
 
         @TestMetadata("addNothingReturnType.kt")
@@ -6200,6 +6235,11 @@ public class QuickFixTestGenerated extends AbstractQuickFixTest {
             runTest("idea/testData/quickfix/deprecatedSymbolUsage/classLiteralAndTypeArgsRuntime.kt");
         }
 
+        @TestMetadata("deprecatedSinceKotlinAndReplaceWith.kt")
+        public void testDeprecatedSinceKotlinAndReplaceWith() throws Exception {
+            runTest("idea/testData/quickfix/deprecatedSymbolUsage/deprecatedSinceKotlinAndReplaceWith.kt");
+        }
+
         @TestMetadata("deprecationLevel.kt")
         public void testDeprecationLevel() throws Exception {
             runTest("idea/testData/quickfix/deprecatedSymbolUsage/deprecationLevel.kt");
@@ -6423,6 +6463,11 @@ public class QuickFixTestGenerated extends AbstractQuickFixTest {
         @TestMetadata("usageInDerivedClassGeneric.kt")
         public void testUsageInDerivedClassGeneric() throws Exception {
             runTest("idea/testData/quickfix/deprecatedSymbolUsage/usageInDerivedClassGeneric.kt");
+        }
+
+        @TestMetadata("withInnerFunction.kt")
+        public void testWithInnerFunction() throws Exception {
+            runTest("idea/testData/quickfix/deprecatedSymbolUsage/withInnerFunction.kt");
         }
 
         @TestMetadata("idea/testData/quickfix/deprecatedSymbolUsage/argumentSideEffects")
@@ -8886,31 +8931,6 @@ public class QuickFixTestGenerated extends AbstractQuickFixTest {
                 runTest("idea/testData/quickfix/migration/jsExternal/funPlacementOnExternalObjectJsRuntime.kt");
             }
 
-            @TestMetadata("nativeExtensionFunBlockBodyJsRuntime.kt")
-            public void testNativeExtensionFunBlockBodyJsRuntime() throws Exception {
-                runTest("idea/testData/quickfix/migration/jsExternal/nativeExtensionFunBlockBodyJsRuntime.kt");
-            }
-
-            @TestMetadata("nativeExtensionFunJsName.kt")
-            public void testNativeExtensionFunJsName() throws Exception {
-                runTest("idea/testData/quickfix/migration/jsExternal/nativeExtensionFunJsName.kt");
-            }
-
-            @TestMetadata("nativeExtensionFunJsRuntime.kt")
-            public void testNativeExtensionFunJsRuntime() throws Exception {
-                runTest("idea/testData/quickfix/migration/jsExternal/nativeExtensionFunJsRuntime.kt");
-            }
-
-            @TestMetadata("nativeExtensionFunParamsJsRuntime.kt")
-            public void testNativeExtensionFunParamsJsRuntime() throws Exception {
-                runTest("idea/testData/quickfix/migration/jsExternal/nativeExtensionFunParamsJsRuntime.kt");
-            }
-
-            @TestMetadata("nativeExtensionVaslJsRuntime.kt")
-            public void testNativeExtensionVaslJsRuntime() throws Exception {
-                runTest("idea/testData/quickfix/migration/jsExternal/nativeExtensionVaslJsRuntime.kt");
-            }
-
             @TestMetadata("nativeGetterExtensionFunJsRuntime.kt")
             public void testNativeGetterExtensionFunJsRuntime() throws Exception {
                 runTest("idea/testData/quickfix/migration/jsExternal/nativeGetterExtensionFunJsRuntime.kt");
@@ -8921,54 +8941,9 @@ public class QuickFixTestGenerated extends AbstractQuickFixTest {
                 runTest("idea/testData/quickfix/migration/jsExternal/nativeInvokeExtensionFunJsRuntime.kt");
             }
 
-            @TestMetadata("nativeMemberAll01.kt")
-            public void testNativeMemberAll01() throws Exception {
-                runTest("idea/testData/quickfix/migration/jsExternal/nativeMemberAll01.kt");
-            }
-
-            @TestMetadata("nativeMemberAll02.kt")
-            public void testNativeMemberAll02() throws Exception {
-                runTest("idea/testData/quickfix/migration/jsExternal/nativeMemberAll02.kt");
-            }
-
             @TestMetadata("nativeMemberAll03.kt")
             public void testNativeMemberAll03() throws Exception {
                 runTest("idea/testData/quickfix/migration/jsExternal/nativeMemberAll03.kt");
-            }
-
-            @TestMetadata("nativeMemberGetter.kt")
-            public void testNativeMemberGetter() throws Exception {
-                runTest("idea/testData/quickfix/migration/jsExternal/nativeMemberGetter.kt");
-            }
-
-            @TestMetadata("nativeMemberInvoke.kt")
-            public void testNativeMemberInvoke() throws Exception {
-                runTest("idea/testData/quickfix/migration/jsExternal/nativeMemberInvoke.kt");
-            }
-
-            @TestMetadata("nativeMemberInvokeGenericClass.kt")
-            public void testNativeMemberInvokeGenericClass() throws Exception {
-                runTest("idea/testData/quickfix/migration/jsExternal/nativeMemberInvokeGenericClass.kt");
-            }
-
-            @TestMetadata("nativeMemberInvokeGenericClassAndFun.kt")
-            public void testNativeMemberInvokeGenericClassAndFun() throws Exception {
-                runTest("idea/testData/quickfix/migration/jsExternal/nativeMemberInvokeGenericClassAndFun.kt");
-            }
-
-            @TestMetadata("nativeMemberInvokeGenericFun.kt")
-            public void testNativeMemberInvokeGenericFun() throws Exception {
-                runTest("idea/testData/quickfix/migration/jsExternal/nativeMemberInvokeGenericFun.kt");
-            }
-
-            @TestMetadata("nativeMemberNative.kt")
-            public void testNativeMemberNative() throws Exception {
-                runTest("idea/testData/quickfix/migration/jsExternal/nativeMemberNative.kt");
-            }
-
-            @TestMetadata("nativeMemberSetter.kt")
-            public void testNativeMemberSetter() throws Exception {
-                runTest("idea/testData/quickfix/migration/jsExternal/nativeMemberSetter.kt");
             }
 
             @TestMetadata("nativeSetterExtensionFunJsRuntime.kt")
@@ -14331,6 +14306,11 @@ public class QuickFixTestGenerated extends AbstractQuickFixTest {
                 runTest("idea/testData/quickfix/typeMismatch/parameterTypeMismatch/changeFunctionParameterType4.kt");
             }
 
+            @TestMetadata("changeFunctionParameterTypeWithComment.kt")
+            public void testChangeFunctionParameterTypeWithComment() throws Exception {
+                runTest("idea/testData/quickfix/typeMismatch/parameterTypeMismatch/changeFunctionParameterTypeWithComment.kt");
+            }
+
             @TestMetadata("changeParameterTypeLongNameRuntime.kt")
             public void testChangeParameterTypeLongNameRuntime() throws Exception {
                 runTest("idea/testData/quickfix/typeMismatch/parameterTypeMismatch/changeParameterTypeLongNameRuntime.kt");
@@ -14339,6 +14319,11 @@ public class QuickFixTestGenerated extends AbstractQuickFixTest {
             @TestMetadata("changePrimaryConstructorParameterType.kt")
             public void testChangePrimaryConstructorParameterType() throws Exception {
                 runTest("idea/testData/quickfix/typeMismatch/parameterTypeMismatch/changePrimaryConstructorParameterType.kt");
+            }
+
+            @TestMetadata("changePrimaryConstructorParameterTypeOnPropertyDelegate.kt")
+            public void testChangePrimaryConstructorParameterTypeOnPropertyDelegate() throws Exception {
+                runTest("idea/testData/quickfix/typeMismatch/parameterTypeMismatch/changePrimaryConstructorParameterTypeOnPropertyDelegate.kt");
             }
 
             @TestMetadata("multiFakeOverride.kt")

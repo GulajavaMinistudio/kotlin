@@ -17,6 +17,7 @@
 package org.jetbrains.kotlin.ir.declarations.impl
 
 import org.jetbrains.kotlin.descriptors.*
+import org.jetbrains.kotlin.ir.ObsoleteDescriptorBasedAPI
 import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.declarations.impl.carriers.ClassCarrier
 import org.jetbrains.kotlin.ir.symbols.IrClassSymbol
@@ -45,7 +46,8 @@ class IrClassImpl(
     override val isExternal: Boolean = false,
     override val isInline: Boolean = false,
     override val isExpect: Boolean = false,
-    override val isFun: Boolean = false
+    override val isFun: Boolean = false,
+    override val source: SourceElement = SourceElement.NO_SOURCE
 ) :
     IrDeclarationBase<ClassCarrier>(startOffset, endOffset, origin),
     IrClass,
@@ -67,13 +69,15 @@ class IrClassImpl(
         isCompanion = descriptor.isCompanionObject, isInner = descriptor.isInner,
         isData = descriptor.isData, isExternal = descriptor.isEffectivelyExternal(),
         isInline = descriptor.isInline, isExpect = descriptor.isExpect,
-        isFun = descriptor.isFun
+        isFun = descriptor.isFun,
+        source = descriptor.source
     )
 
     init {
         symbol.bind(this)
     }
 
+    @ObsoleteDescriptorBasedAPI
     override val descriptor: ClassDescriptor get() = symbol.descriptor
 
     override var visibilityField: Visibility = visibility

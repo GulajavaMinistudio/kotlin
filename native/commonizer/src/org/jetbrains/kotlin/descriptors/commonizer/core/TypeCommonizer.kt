@@ -50,12 +50,7 @@ private fun areSimpleTypesEqual(cache: CirClassifiersCache, a: CirSimpleType, b:
 
     fun isClassOrTypeAliasUnderStandardKotlinPackages() =
         // N.B. only for descriptors that represent classes or type aliases, but not type parameters!
-        a.isClassOrTypeAlias && b.isClassOrTypeAlias
-                && a.fqName.isUnderStandardKotlinPackages
-                // If classes are from the standard Kotlin packages, compare them only by type constructors.
-                // Effectively, this includes comparison of 1) FQ names of underlying descriptors and 2) number of type constructor parameters.
-                // See org.jetbrains.kotlin.types.AbstractClassTypeConstructor.equals() for details.
-                && (a === b || a.expandedTypeConstructorId == b.expandedTypeConstructorId)
+        a.isClassOrTypeAlias && b.isClassOrTypeAlias && a.fqName.isUnderStandardKotlinPackages
 
     fun descriptorsCanBeCommonizedThemselves() =
         a.kind == b.kind && when (a.kind) {
@@ -103,5 +98,5 @@ private inline fun CirNode<*, *>?.canBeCommonized() =
         true
     } else {
         // If entry is present, then contents (common declaration) should not be null.
-        common() != null
+        commonDeclaration() != null
     }

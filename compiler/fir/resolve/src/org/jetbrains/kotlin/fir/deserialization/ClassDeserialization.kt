@@ -19,8 +19,8 @@ import org.jetbrains.kotlin.fir.declarations.impl.FirDeclarationStatusImpl
 import org.jetbrains.kotlin.fir.expressions.FirAnnotationCall
 import org.jetbrains.kotlin.fir.generateValueOfFunction
 import org.jetbrains.kotlin.fir.generateValuesFunction
-import org.jetbrains.kotlin.fir.resolve.providers.impl.FirClonableSymbolProvider.Companion.CLONABLE_CLASS_ID
-import org.jetbrains.kotlin.fir.resolve.providers.impl.FirClonableSymbolProvider.Companion.CLONE
+import org.jetbrains.kotlin.fir.resolve.providers.impl.FirCloneableSymbolProvider.Companion.CLONEABLE_CLASS_ID
+import org.jetbrains.kotlin.fir.resolve.providers.impl.FirCloneableSymbolProvider.Companion.CLONE
 import org.jetbrains.kotlin.fir.resolve.transformers.sealedInheritors
 import org.jetbrains.kotlin.fir.scopes.KotlinScopeProvider
 import org.jetbrains.kotlin.fir.symbols.CallableId
@@ -29,9 +29,11 @@ import org.jetbrains.kotlin.fir.symbols.impl.ConeClassLikeLookupTagImpl
 import org.jetbrains.kotlin.fir.symbols.impl.FirNamedFunctionSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirVariableSymbol
+import org.jetbrains.kotlin.fir.types.ConeAttributes
 import org.jetbrains.kotlin.fir.types.builder.buildResolvedTypeRef
 import org.jetbrains.kotlin.fir.types.impl.ConeClassLikeTypeImpl
 import org.jetbrains.kotlin.fir.types.impl.ConeTypeParameterTypeImpl
+import org.jetbrains.kotlin.load.kotlin.KotlinJvmBinarySourceElement
 import org.jetbrains.kotlin.metadata.ProtoBuf
 import org.jetbrains.kotlin.metadata.deserialization.Flags
 import org.jetbrains.kotlin.metadata.deserialization.NameResolver
@@ -81,6 +83,7 @@ fun deserializeClassToSymbol(
         ) ?: FirDeserializationContext.createForClass(
             classId, classProto, nameResolver, session,
             defaultAnnotationDeserializer ?: FirBuiltinAnnotationDeserializer(session),
+            FirConstDeserializer(session, (containerSource as? KotlinJvmBinarySourceElement)?.binaryClass),
             containerSource
         )
     buildRegularClass {
@@ -103,7 +106,7 @@ fun deserializeClassToSymbol(
         val classDeserializer = context.memberDeserializer
 
         val superTypesDeserialized = classProto.supertypes(context.typeTable).map { supertypeProto ->
-            typeDeserializer.simpleType(supertypeProto)
+            typeDeserializer.simpleType(supertypeProto, ConeAttributes.Empty)
         }// TODO: + c.components.additionalClassPartsProvider.getSupertypes(this@DeserializedClassDescriptor)
 
         superTypesDeserialized.mapNotNullTo(superTypeRefs) {
@@ -199,7 +202,7 @@ private fun FirRegularClassBuilder.addCloneForArrayIfNeeded(classId: ClassId) {
     if (classId.shortClassName !in ARRAY_CLASSES) return
     superTypeRefs += buildResolvedTypeRef {
         type = ConeClassLikeTypeImpl(
-            ConeClassLikeLookupTagImpl(CLONABLE_CLASS_ID),
+            ConeClassLikeLookupTagImpl(CLONEABLE_CLASS_ID),
             typeArguments = emptyArray(),
             isNullable = false
         )

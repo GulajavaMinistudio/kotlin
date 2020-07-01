@@ -422,14 +422,6 @@ public class PropertyCodegen {
         }
         modifiers |= getVisibilityForBackingField(propertyDescriptor, isDelegate);
 
-        // If val is initialized in EXACTLY_ONCE closure, other class from the same package initializes it
-        // so, its visibility should be package private and not final
-        if (!propertyDescriptor.isVar() &&
-            bindingContext.get(BindingContext.FIELD_CAPTURED_IN_EXACLY_ONCE_CLOSURE, propertyDescriptor) != null
-        ) {
-            modifiers &= ~(ACC_PRIVATE | ACC_FINAL);
-        }
-
         if (AsmUtil.isPropertyWithBackingFieldCopyInOuterClass(propertyDescriptor)) {
             ImplementationBodyCodegen parentBodyCodegen = (ImplementationBodyCodegen) memberCodegen.getParentCodegen();
             parentBodyCodegen.addCompanionObjectPropertyToCopy(propertyDescriptor, defaultValue);
@@ -446,7 +438,13 @@ public class PropertyCodegen {
             );
 
             if (annotatedField != null) {
-                AnnotationCodegen.forField(fv, memberCodegen, state)
+                // Don't emit nullability annotations for backing field if:
+                // - backing field is invisible from Java (private or synthetic);
+                // - property is lateinit (since corresponding field is actually nullable).
+                boolean skipNullabilityAnnotations =
+                        (modifiers & ACC_PRIVATE) != 0 || (modifiers & ACC_SYNTHETIC) != 0 ||
+                        propertyDescriptor.isLateInit();
+                AnnotationCodegen.forField(fv, memberCodegen, state, skipNullabilityAnnotations)
                         .genAnnotations(annotatedField, type, propertyDescriptor.getType());
             }
         }

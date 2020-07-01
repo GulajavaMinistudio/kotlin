@@ -12,6 +12,7 @@ import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.descriptors.Visibilities
 import org.jetbrains.kotlin.descriptors.Visibility
 import org.jetbrains.kotlin.descriptors.annotations.Annotations
+import org.jetbrains.kotlin.ir.ObsoleteDescriptorBasedAPI
 import org.jetbrains.kotlin.ir.IrElement
 import org.jetbrains.kotlin.ir.UNDEFINED_OFFSET
 import org.jetbrains.kotlin.ir.builders.Scope
@@ -130,6 +131,7 @@ fun IrCall.getAnnotationClass(): IrClass {
 
 val IrTypeParametersContainer.classIfConstructor get() = if (this is IrConstructor) parentAsClass else this
 
+@OptIn(ObsoleteDescriptorBasedAPI::class)
 fun IrValueParameter.copyTo(
     irFunction: IrFunction,
     origin: IrDeclarationOrigin = this.origin,
@@ -172,6 +174,7 @@ fun IrValueParameter.copyTo(
     }
 }
 
+@OptIn(ObsoleteDescriptorBasedAPI::class)
 fun IrTypeParameter.copyToWithoutSuperTypes(
     target: IrTypeParametersContainer,
     index: Int = this.index,
@@ -185,6 +188,7 @@ fun IrTypeParameter.copyToWithoutSuperTypes(
     }
 }
 
+@OptIn(ObsoleteDescriptorBasedAPI::class)
 fun IrFunction.copyReceiverParametersFrom(from: IrFunction) {
     dispatchReceiverParameter = from.dispatchReceiverParameter?.let {
         IrValueParameterImpl(it.startOffset, it.endOffset, it.origin, it.descriptor, it.type, it.varargElementType).also {
@@ -457,6 +461,7 @@ fun IrClass.createParameterDeclarations() {
     }
 }
 
+@OptIn(ObsoleteDescriptorBasedAPI::class)
 fun IrFunction.createDispatchReceiverParameter(origin: IrDeclarationOrigin? = null) {
     assert(dispatchReceiverParameter == null)
 
@@ -479,13 +484,13 @@ val IrFunction.allParameters: List<IrValueParameter>
     get() = if (this is IrConstructor) {
         listOf(
             this.constructedClass.thisReceiver
-                ?: error(this.descriptor)
+                ?: error(this.render())
         ) + explicitParameters
     } else {
         explicitParameters
     }
 
-fun IrClass.addFakeOverrides(implementedMembers: List<IrSimpleFunction> = emptyList()) {
+fun IrClass.addFakeOverridesViaIncorrectHeuristic(implementedMembers: List<IrSimpleFunction> = emptyList()) {
     fun IrDeclaration.toList() = when (this) {
         is IrSimpleFunction -> listOf(this)
         is IrProperty -> listOfNotNull(getter, setter)
@@ -519,7 +524,7 @@ fun IrClass.addFakeOverrides(implementedMembers: List<IrSimpleFunction> = emptyL
                 IrDeclarationOrigin.FAKE_OVERRIDE,
                 IrSimpleFunctionSymbolImpl(descriptor),
                 irFunction.name,
-                Visibilities.INHERITED,
+                Visibilities.PUBLIC,
                 irFunction.modality,
                 irFunction.returnType,
                 isInline = irFunction.isInline,
@@ -531,7 +536,7 @@ fun IrClass.addFakeOverrides(implementedMembers: List<IrSimpleFunction> = emptyL
                 isOperator = irFunction.isOperator
             ).apply {
                 descriptor.bind(this)
-                parent = this@addFakeOverrides
+                parent = this@addFakeOverridesViaIncorrectHeuristic
                 overriddenSymbols = overriddenFunctions.map { it.symbol }
                 copyParameterDeclarationsFrom(irFunction)
                 copyAttributes(irFunction)
@@ -548,6 +553,7 @@ fun IrClass.addFakeOverrides(implementedMembers: List<IrSimpleFunction> = emptyL
     }
 }
 
+@OptIn(ObsoleteDescriptorBasedAPI::class)
 fun createStaticFunctionWithReceivers(
     irParent: IrDeclarationParent,
     name: Name,

@@ -24,21 +24,13 @@ object CirPropertyFactory {
             )
         }
 
-        val containingClass: ClassDescriptor? = source.containingDeclaration as? ClassDescriptor
-
         return create(
             annotations = source.annotations.map(CirAnnotationFactory::create),
             name = source.name.intern(),
             typeParameters = source.typeParameters.map(CirTypeParameterFactory::create),
             visibility = source.visibility,
             modality = source.modality,
-            containingClassDetails = containingClass?.let {
-                CirContainingClassDetails(
-                    kind = it.kind,
-                    modality = it.modality,
-                    isData = it.isData
-                )
-            },
+            containingClassDetails = CirContainingClassDetailsFactory.create(source),
             isExternal = source.isExternal,
             extensionReceiver = source.extensionReceiverParameter?.let(CirExtensionReceiverFactory::create),
             returnType = CirTypeFactory.create(source.returnType!!),
@@ -51,8 +43,7 @@ object CirPropertyFactory {
             setter = source.setter?.let(CirPropertySetterFactory::create),
             backingFieldAnnotations = source.backingField?.annotations?.map(CirAnnotationFactory::create),
             delegateFieldAnnotations = source.delegateField?.annotations?.map(CirAnnotationFactory::create),
-            compileTimeInitializer = source.compileTimeInitializer,
-            isLiftedUp = false
+            compileTimeInitializer = source.compileTimeInitializer
         )
     }
 
@@ -76,8 +67,7 @@ object CirPropertyFactory {
         setter: CirPropertySetter?,
         backingFieldAnnotations: List<CirAnnotation>?,
         delegateFieldAnnotations: List<CirAnnotation>?,
-        compileTimeInitializer: ConstantValue<*>?,
-        isLiftedUp: Boolean
+        compileTimeInitializer: ConstantValue<*>?
     ): CirProperty {
         return CirPropertyImpl(
             annotations = annotations,
@@ -98,8 +88,7 @@ object CirPropertyFactory {
             setter = setter,
             backingFieldAnnotations = backingFieldAnnotations,
             delegateFieldAnnotations = delegateFieldAnnotations,
-            compileTimeInitializer = compileTimeInitializer,
-            isLiftedUp = isLiftedUp
+            compileTimeInitializer = compileTimeInitializer
         )
     }
 }

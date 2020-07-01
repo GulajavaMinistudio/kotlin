@@ -9,7 +9,6 @@ import org.jetbrains.kotlin.KtNodeTypes
 import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.descriptors.Visibilities
 import org.jetbrains.kotlin.fir.*
-import org.jetbrains.kotlin.fir.backend.generators.CallAndReferenceGenerator
 import org.jetbrains.kotlin.fir.backend.generators.ClassMemberGenerator
 import org.jetbrains.kotlin.fir.backend.generators.OperatorExpressionGenerator
 import org.jetbrains.kotlin.fir.declarations.*
@@ -22,6 +21,7 @@ import org.jetbrains.kotlin.fir.references.FirResolvedNamedReference
 import org.jetbrains.kotlin.fir.resolve.firSymbolProvider
 import org.jetbrains.kotlin.fir.resolve.isIteratorNext
 import org.jetbrains.kotlin.fir.resolve.scope
+import org.jetbrains.kotlin.fir.resolve.toSymbol
 import org.jetbrains.kotlin.fir.resolve.transformers.IntegerLiteralTypeApproximationTransformer
 import org.jetbrains.kotlin.fir.scopes.impl.FirIntegerOperator
 import org.jetbrains.kotlin.fir.symbols.AbstractFirBasedSymbol
@@ -40,6 +40,7 @@ import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.declarations.impl.IrFileImpl
 import org.jetbrains.kotlin.ir.expressions.*
 import org.jetbrains.kotlin.ir.expressions.impl.*
+import org.jetbrains.kotlin.ir.symbols.IrClassSymbol
 import org.jetbrains.kotlin.ir.types.*
 import org.jetbrains.kotlin.ir.util.constructors
 import org.jetbrains.kotlin.ir.util.defaultType
@@ -51,22 +52,18 @@ import org.jetbrains.kotlin.psi.KtForExpression
 class Fir2IrVisitor(
     private val converter: Fir2IrConverter,
     private val components: Fir2IrComponents,
-    fakeOverrideMode: FakeOverrideMode
+    private val conversionScope: Fir2IrConversionScope
 ) : Fir2IrComponents by components, FirDefaultVisitor<IrElement, Any?>(), IrGeneratorContextInterface {
 
     private val integerApproximator = IntegerLiteralTypeApproximationTransformer(
         session.firSymbolProvider,
-        session.inferenceContext,
+        session.typeContext,
         session
     )
 
-    private val conversionScope = Fir2IrConversionScope()
+    private val memberGenerator = ClassMemberGenerator(components, this, conversionScope)
 
-    private val callGenerator = CallAndReferenceGenerator(components, this, conversionScope)
-
-    private val memberGenerator = ClassMemberGenerator(components, this, conversionScope, callGenerator, fakeOverrideMode)
-
-    private val operatorGenerator = OperatorExpressionGenerator(components, this, callGenerator, conversionScope)
+    private val operatorGenerator = OperatorExpressionGenerator(components, this, conversionScope)
 
     private fun FirTypeRef.toIrType(): IrType = with(typeConverter) { toIrType() }
 
@@ -88,7 +85,7 @@ class Fir2IrVisitor(
                 it.accept(this@Fir2IrVisitor, data) as? IrConstructorCall
             }
 
-            (this as IrFileImpl).metadata = FirMetadataSource.File(file, components.session, declarations.map { it.descriptor })
+            (this as IrFileImpl).metadata = FirMetadataSource.File(file, components.session)
         }
     }
 
@@ -102,19 +99,22 @@ class Fir2IrVisitor(
     override fun visitEnumEntry(enumEntry: FirEnumEntry, data: Any?): IrElement {
         val irEnumEntry = classifierStorage.getCachedIrEnumEntry(enumEntry)!!
         val correspondingClass = irEnumEntry.correspondingClass ?: return irEnumEntry
-        declarationStorage.enterScope(irEnumEntry.descriptor)
+        declarationStorage.enterScope(irEnumEntry)
         classifierStorage.putEnumEntryClassInScope(enumEntry, correspondingClass)
         converter.processAnonymousObjectMembers(enumEntry.initializer as FirAnonymousObject, correspondingClass)
         conversionScope.withParent(correspondingClass) {
             memberGenerator.convertClassContent(correspondingClass, enumEntry.initializer as FirAnonymousObject)
+            val constructor = correspondingClass.constructors.first()
             irEnumEntry.initializerExpression = IrExpressionBodyImpl(
                 IrEnumConstructorCallImpl(
                     startOffset, endOffset, enumEntry.returnTypeRef.toIrType(),
-                    correspondingClass.constructors.first().symbol
+                    constructor.symbol,
+                    typeArgumentsCount = constructor.typeParameters.size,
+                    valueArgumentsCount = constructor.valueParameters.size
                 )
             )
         }
-        declarationStorage.leaveScope(irEnumEntry.descriptor)
+        declarationStorage.leaveScope(irEnumEntry)
         return irEnumEntry
     }
 
@@ -176,9 +176,9 @@ class Fir2IrVisitor(
 
     override fun visitAnonymousInitializer(anonymousInitializer: FirAnonymousInitializer, data: Any?): IrElement {
         val irAnonymousInitializer = declarationStorage.getCachedIrAnonymousInitializer(anonymousInitializer)!!
-        declarationStorage.enterScope(irAnonymousInitializer.descriptor)
+        declarationStorage.enterScope(irAnonymousInitializer)
         irAnonymousInitializer.body = convertToIrBlockBody(anonymousInitializer.body!!)
-        declarationStorage.leaveScope(irAnonymousInitializer.descriptor)
+        declarationStorage.leaveScope(irAnonymousInitializer)
         return irAnonymousInitializer
     }
 
@@ -241,7 +241,7 @@ class Fir2IrVisitor(
                 when (irTarget) {
                     is IrConstructor -> irTarget.symbol
                     is IrSimpleFunction -> irTarget.symbol
-                    else -> throw AssertionError("Should not be here: $irTarget")
+                    else -> error("Unknown return target: $irTarget")
                 },
                 convertToIrExpression(result)
             )
@@ -297,8 +297,8 @@ class Fir2IrVisitor(
         return conversionScope.withSafeCallSubject(receiverVariable) {
             val afterNotNullCheck = safeCallExpression.regularQualifiedAccess.accept(this, data) as IrExpression
 
-            val isReceiverNullable = with(components.session.inferenceContext) {
-                safeCallExpression.receiver.typeRef.coneTypeSafe<ConeKotlinType>()?.isNullableType() == true
+            val isReceiverNullable = with(components.session.typeContext) {
+                safeCallExpression.receiver.typeRef.coneType.isNullableType()
             }
 
             components.createSafeCallConstruction(
@@ -579,11 +579,15 @@ class Fir2IrVisitor(
             KtNodeTypes.POSTFIX_EXPRESSION -> IrStatementOrigin.EXCLEXCL
             else -> null
         }
+        // If the constant true branch has empty body, it won't be converted. Thus, the entire `when` expression is effectively _not_
+        // exhaustive anymore. In that case, coerce the return type of `when` expression to Unit as per the backend expectation.
+        val effectivelyNotExhaustive = !whenExpression.isExhaustive ||
+                whenExpression.branches.any { it.condition is FirElseIfTrueCondition && it.result.statements.isEmpty() }
         return conversionScope.withWhenSubject(subjectVariable) {
             whenExpression.convertWithOffsets { startOffset, endOffset ->
                 val irWhen = IrWhenImpl(
                     startOffset, endOffset,
-                    whenExpression.typeRef.toIrType(),
+                    if (effectivelyNotExhaustive) irBuiltIns.unitType else whenExpression.typeRef.toIrType(),
                     origin
                 ).apply {
                     var unconditionalBranchFound = false
@@ -599,7 +603,10 @@ class Fir2IrVisitor(
                     }
                     if (whenExpression.isExhaustive && !unconditionalBranchFound) {
                         val irResult = IrCallImpl(
-                            startOffset, endOffset, irBuiltIns.nothingType, irBuiltIns.noWhenBranchMatchedExceptionSymbol
+                            startOffset, endOffset, irBuiltIns.nothingType,
+                            irBuiltIns.noWhenBranchMatchedExceptionSymbol,
+                            typeArgumentsCount = 0,
+                            valueArgumentsCount = 0
                         )
                         branches += IrElseBranchImpl(
                             IrConstImpl.boolean(startOffset, endOffset, irBuiltIns.booleanType, true), irResult
@@ -758,7 +765,9 @@ class Fir2IrVisitor(
                 startOffset, endOffset,
                 checkNotNullCall.typeRef.toIrType(),
                 irBuiltIns.checkNotNullSymbol,
-                IrStatementOrigin.EXCLEXCL
+                typeArgumentsCount = 1,
+                valueArgumentsCount = 1,
+                origin = IrStatementOrigin.EXCLEXCL
             ).apply {
                 putTypeArgument(0, checkNotNullCall.argument.typeRef.toIrType().makeNotNull())
                 putValueArgument(0, convertToIrExpression(checkNotNullCall.argument))
@@ -769,19 +778,34 @@ class Fir2IrVisitor(
     override fun visitGetClassCall(getClassCall: FirGetClassCall, data: Any?): IrElement {
         val argument = getClassCall.argument
         val irType = getClassCall.typeRef.toIrType()
-        val irClassType = argument.typeRef.toIrType()
+        val irClassType =
+            if (argument is FirClassReferenceExpression) {
+                argument.classTypeRef.toIrType()
+            } else {
+                argument.typeRef.toIrType()
+            }
         val irClassReferenceSymbol = when (argument) {
             is FirResolvedReifiedParameterReference -> {
                 classifierStorage.getIrTypeParameterSymbol(argument.symbol, ConversionTypeContext.DEFAULT)
             }
             is FirResolvedQualifier -> {
-                val symbol = argument.symbol as? FirClassSymbol
-                    ?: return getClassCall.convertWithOffsets { startOffset, endOffset ->
-                        IrErrorCallExpressionImpl(
-                            startOffset, endOffset, irType, "Resolved qualifier ${argument.render()} does not have correct symbol"
-                        )
+                when (val symbol = argument.symbol) {
+                    is FirClassSymbol -> {
+                        classifierStorage.getIrClassSymbol(symbol)
                     }
-                classifierStorage.getIrClassSymbol(symbol)
+                    is FirTypeAliasSymbol -> {
+                        symbol.fir.expandedConeType.toIrClassSymbol()
+                    }
+                    else ->
+                        return getClassCall.convertWithOffsets { startOffset, endOffset ->
+                            IrErrorCallExpressionImpl(
+                                startOffset, endOffset, irType, "Resolved qualifier ${argument.render()} does not have correct symbol"
+                            )
+                        }
+                }
+            }
+            is FirClassReferenceExpression -> {
+                argument.classTypeRef.coneTypeSafe<ConeClassLikeType>().toIrClassSymbol()
             }
             else -> null
         }
@@ -793,6 +817,11 @@ class Fir2IrVisitor(
             }
         }
     }
+
+    private fun ConeClassLikeType?.toIrClassSymbol(): IrClassSymbol? =
+        (this?.lookupTag?.toSymbol(session) as? FirClassSymbol<*>)?.let {
+            classifierStorage.getIrClassSymbol(it)
+        }
 
     override fun visitArrayOfCall(arrayOfCall: FirArrayOfCall, data: Any?): IrElement {
         return arrayOfCall.convertWithOffsets { startOffset, endOffset ->

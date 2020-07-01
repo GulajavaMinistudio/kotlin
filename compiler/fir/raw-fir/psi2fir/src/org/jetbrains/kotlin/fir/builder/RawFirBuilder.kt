@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2018 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2010-2020 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
@@ -38,6 +38,7 @@ import org.jetbrains.kotlin.lexer.KtTokens.*
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.*
+import org.jetbrains.kotlin.psi.psiUtil.containingClassOrObject
 import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
 import org.jetbrains.kotlin.psi.psiUtil.hasActualModifier
 import org.jetbrains.kotlin.psi.psiUtil.hasExpectModifier
@@ -45,6 +46,8 @@ import org.jetbrains.kotlin.types.Variance
 import org.jetbrains.kotlin.types.expressions.OperatorConventions
 import org.jetbrains.kotlin.util.OperatorNameConventions
 import org.jetbrains.kotlin.utils.addToStdlib.firstIsInstanceOrNull
+import java.util.*
+import org.jetbrains.kotlin.utils.addToStdlib.runIf
 import kotlin.collections.contains
 
 class RawFirBuilder(
@@ -55,8 +58,13 @@ class RawFirBuilder(
         return file.accept(Visitor(), Unit) as FirFile
     }
 
-    override fun PsiElement.toFirSourceElement(): FirPsiSourceElement<*> {
-        return this.toFirPsiSourceElement()
+    fun buildTypeReference(reference: KtTypeReference): FirTypeRef {
+        return reference.accept(Visitor(), Unit) as FirTypeRef
+    }
+
+    override fun PsiElement.toFirSourceElement(kind: FirFakeSourceElementKind?): FirPsiSourceElement<*> {
+        val actualKind = kind ?: this@RawFirBuilder.context.forcedElementSourceKind ?: FirRealSourceElementKind
+        return this.toFirPsiSourceElement(actualKind)
     }
 
     override val PsiElement.elementType: IElementType
@@ -122,7 +130,7 @@ class RawFirBuilder(
 
         private fun KtTypeReference?.toFirOrImplicitType(): FirTypeRef =
             convertSafe() ?: buildImplicitTypeRef {
-                source = this@toFirOrImplicitType?.toFirSourceElement()
+                source = this@toFirOrImplicitType?.toFirSourceElement(FirFakeSourceElementKind.ImplicitTypeRef)
             }
 
         private fun KtTypeReference?.toFirOrUnitType(): FirTypeRef =
@@ -237,13 +245,13 @@ class RawFirBuilder(
             val isSpread = getSpreadElement() != null
             return when {
                 name != null -> buildNamedArgumentExpression {
-                    source = expression?.toFirSourceElement()
+                    source = (this@toFirExpression as? PsiElement)?.toFirSourceElement()
                     this.expression = firExpression
                     this.isSpread = isSpread
                     this.name = name
                 }
                 isSpread -> buildSpreadArgumentExpression {
-                    source = expression?.toFirSourceElement()
+                    source = (this@toFirExpression as? PsiElement)?.toFirSourceElement()
                     this.expression = firExpression
                 }
                 else -> firExpression
@@ -257,8 +265,18 @@ class RawFirBuilder(
         ): FirPropertyAccessor {
             val accessorVisibility =
                 if (this?.visibility != null && this.visibility != Visibilities.UNKNOWN) this.visibility else property.visibility
+            // Downward propagation of `inline` and `external` modifiers (from property to its accessors)
+            val status =
+                FirDeclarationStatusImpl(accessorVisibility, Modality.FINAL).apply {
+                    isInline = property.hasModifier(INLINE_KEYWORD) ||
+                            this@toFirPropertyAccessor?.hasModifier(INLINE_KEYWORD) == true
+                    isExternal = property.hasModifier(EXTERNAL_KEYWORD) ||
+                            this@toFirPropertyAccessor?.hasModifier(EXTERNAL_KEYWORD) == true
+                }
             if (this == null || !hasBody()) {
-                val propertySource = property.toFirSourceElement()
+                val propertySource =
+                    if (this != null && hasBody()) property.toFirSourceElement()
+                    else property.toFirPsiSourceElement(FirFakeSourceElementKind.DefaultAccessor)
                 return FirDefaultPropertyAccessor
                     .createGetterOrSetter(
                         propertySource,
@@ -272,6 +290,7 @@ class RawFirBuilder(
                         if (this != null) {
                             it.extractAnnotationsFrom(this)
                         }
+                        it.status = status
                     }
             }
             val source = this.toFirSourceElement()
@@ -286,13 +305,13 @@ class RawFirBuilder(
                     returnTypeReference.toFirOrUnitType()
                 }
                 this.isGetter = isGetter
-                status = FirDeclarationStatusImpl(accessorVisibility, Modality.FINAL)
+                this.status = status
                 extractAnnotationsTo(this)
                 this@RawFirBuilder.context.firFunctionTargets += accessorTarget
                 extractValueParametersTo(this, propertyTypeRef)
                 if (!isGetter && valueParameters.isEmpty()) {
                     valueParameters += buildDefaultSetterValueParameter {
-                        this.source = source
+                        this.source = source.withKind(FirFakeSourceElementKind.DefaultAccessor)
                         session = baseSession
                         origin = FirDeclarationOrigin.Source
                         returnTypeRef = propertyTypeRef
@@ -334,28 +353,27 @@ class RawFirBuilder(
             }
         }
 
-        private fun KtParameter.toFirProperty(firParameter: FirValueParameter): FirProperty {
+        private fun KtParameter.toFirProperty(firParameter: FirValueParameter, isExpect: Boolean): FirProperty {
             require(hasValOrVar())
-            var type = typeReference.toFirOrErrorType()
+            val type = typeReference.toFirOrErrorType()
             val status = FirDeclarationStatusImpl(visibility, modality).apply {
-                isExpect = hasExpectModifier()
+                this.isExpect = isExpect
                 isActual = hasActualModifier()
                 isOverride = hasModifier(OVERRIDE_KEYWORD)
                 isConst = false
                 isLateInit = false
             }
-            val parameterSource = this.toFirSourceElement()
-            val propertySource = this@toFirProperty.toFirSourceElement()
+            val propertySource = toFirSourceElement(FirFakeSourceElementKind.PropertyFromParameter)
             val propertyName = nameAsSafeName
             return buildProperty {
-                source = parameterSource
+                source = propertySource
                 session = baseSession
                 origin = FirDeclarationOrigin.Source
                 returnTypeRef = type
                 receiverTypeRef = null
                 name = propertyName
                 initializer = buildQualifiedAccessExpression {
-                    source = parameterSource
+                    source = propertySource
                     calleeReference = buildPropertyFromParameterResolvedNamedReference {
                         source = propertySource
                         name = propertyName
@@ -366,9 +384,10 @@ class RawFirBuilder(
                 symbol = FirPropertySymbol(callableIdForName(propertyName))
                 isLocal = false
                 this.status = status
-                getter = FirDefaultPropertyGetter(propertySource, baseSession, FirDeclarationOrigin.Source, type, visibility)
+                val defaultAccessorSource = propertySource.withKind(FirFakeSourceElementKind.DefaultAccessor)
+                getter = FirDefaultPropertyGetter(defaultAccessorSource, baseSession, FirDeclarationOrigin.Source, type, visibility)
                 setter = if (isMutable) FirDefaultPropertySetter(
-                    propertySource,
+                    defaultAccessorSource,
                     baseSession,
                     FirDeclarationOrigin.Source,
                     type,
@@ -471,7 +490,7 @@ class RawFirBuilder(
                     delegatedSuperTypeRef = buildResolvedTypeRef {
                         type = ConeClassLikeTypeImpl(
                             implicitEnumType.type.lookupTag,
-                            delegatedSelfTypeRef?.coneTypeUnsafe<ConeKotlinType>()?.let { arrayOf(it) } ?: emptyArray(),
+                            delegatedSelfTypeRef?.coneType?.let { arrayOf(it) } ?: emptyArray(),
                             isNullable = false,
                         )
                     }
@@ -521,9 +540,10 @@ class RawFirBuilder(
             ownerTypeParameters: List<FirTypeParameterRef>
         ): FirConstructor {
             val constructorCallee = superTypeCallEntry?.calleeExpression?.toFirSourceElement()
-            val constructorSource = (this ?: owner).toFirSourceElement()
+            val constructorSource = this?.toFirSourceElement()
+                ?: owner.toFirPsiSourceElement(FirFakeSourceElementKind.ImplicitConstructor)
             val firDelegatedCall = buildDelegatedConstructorCall {
-                source = constructorCallee ?: constructorSource
+                source = constructorCallee ?: constructorSource.withKind(FirFakeSourceElementKind.DelegatingConstructorCall)
                 constructedTypeRef = delegatedSuperTypeRef
                 isThis = false
                 if (!stubMode) {
@@ -540,8 +560,8 @@ class RawFirBuilder(
 
             val explicitVisibility = this?.visibility
             val status = FirDeclarationStatusImpl(explicitVisibility ?: defaultVisibility(), Modality.FINAL).apply {
-                isExpect = this@toFirConstructor?.hasExpectModifier() ?: false
-                isActual = this@toFirConstructor?.hasActualModifier() ?: false
+                isExpect = this@toFirConstructor?.hasExpectModifier() == true || owner.hasExpectModifier()
+                isActual = this@toFirConstructor?.hasActualModifier() == true
                 isInner = owner.hasModifier(INNER_KEYWORD)
                 isFromSealedClass = owner.hasModifier(SEALED_KEYWORD) && explicitVisibility !== Visibilities.PRIVATE
                 isFromEnumClass = owner.hasModifier(ENUM_KEYWORD)
@@ -598,6 +618,7 @@ class RawFirBuilder(
                 name = nameAsSafeName
                 status = FirDeclarationStatusImpl(Visibilities.PUBLIC, Modality.FINAL).apply {
                     isStatic = true
+                    isExpect = containingClassOrObject?.hasExpectModifier() == true
                 }
                 symbol = FirVariableSymbol(callableIdForName(nameAsSafeName))
                 // NB: not sure should annotations be on enum entry itself, or on its corresponding object
@@ -608,7 +629,7 @@ class RawFirBuilder(
                 }
                 initializer = withChildClassName(nameAsSafeName) {
                     buildAnonymousObject {
-                        source = toFirSourceElement()
+                        source = toFirSourceElement(FirFakeSourceElementKind.EnumInitializer)
                         session = baseSession
                         origin = FirDeclarationOrigin.Source
                         classKind = ClassKind.ENUM_ENTRY
@@ -648,8 +669,10 @@ class RawFirBuilder(
         }
 
         override fun visitClassOrObject(classOrObject: KtClassOrObject, data: Unit): FirElement {
-            return withChildClassName(classOrObject.nameAsSafeName, classOrObject.isLocal) {
-
+            return withChildClassName(
+                classOrObject.nameAsSafeName,
+                classOrObject.isLocal || classOrObject.getStrictParentOfType<KtEnumEntry>() != null
+            ) {
                 val classKind = when (classOrObject) {
                     is KtObjectDeclaration -> ClassKind.OBJECT
                     is KtClass -> when {
@@ -670,6 +693,7 @@ class RawFirBuilder(
                     isCompanion = (classOrObject as? KtObjectDeclaration)?.isCompanion() == true
                     isData = classOrObject.hasModifier(DATA_KEYWORD)
                     isInline = classOrObject.hasModifier(INLINE_KEYWORD)
+                    isFun = classOrObject.hasModifier(FUN_KEYWORD)
                 }
                 withCapturedTypeParameters {
                     if (!status.isInner) context.capturedTypeParameters = context.capturedTypeParameters.clear()
@@ -701,7 +725,7 @@ class RawFirBuilder(
                                 firPrimaryConstructor.valueParameters
                             ).forEach { (ktParameter, firParameter) ->
                                 if (ktParameter.hasValOrVar()) {
-                                    addDeclaration(ktParameter.toFirProperty(firParameter))
+                                    addDeclaration(ktParameter.toFirProperty(firParameter, classOrObject.hasExpectModifier()))
                                 }
                             }
                         }
@@ -726,16 +750,27 @@ class RawFirBuilder(
                                 baseSession,
                                 classOrObject,
                                 this,
-                                firPrimaryConstructor,
                                 zippedParameters,
                                 context.packageFqName,
-                                context.className
+                                context.className,
+                                createClassTypeRefWithSourceKind = { firPrimaryConstructor.returnTypeRef.copyWithNewSourceKind(it) },
+                                createParameterTypeRefWithSourceKind = { property, newKind ->
+                                    // just making a shallow copy isn't enough type ref may be a function type ref
+                                    // and contain value parameters inside
+                                    withDefaultSourceElementKind(newKind) {
+                                        (property.returnTypeRef.psi as KtTypeReference).toFirOrImplicitType()
+                                    }
+                                },
                             ).generate()
                         }
 
                         if (classOrObject.hasModifier(ENUM_KEYWORD)) {
-                            generateValuesFunction(baseSession, context.packageFqName, context.className)
-                            generateValueOfFunction(baseSession, context.packageFqName, context.className)
+                            generateValuesFunction(
+                                baseSession, context.packageFqName, context.className, classOrObject.hasExpectModifier()
+                            )
+                            generateValueOfFunction(
+                                baseSession, context.packageFqName, context.className, classOrObject.hasExpectModifier()
+                            )
                         }
                     }
                 }
@@ -808,8 +843,8 @@ class RawFirBuilder(
             val receiverType = function.receiverTypeReference.convertSafe<FirTypeRef>()
 
             val labelName: String?
-
-            val functionBuilder = if (function.name == null) {
+            val functionIsAnonymousFunction = function.name == null && !function.parent.let { it is KtFile || it is KtClassBody }
+            val functionBuilder = if (functionIsAnonymousFunction) {
                 FirAnonymousFunctionBuilder().apply {
                     receiverTypeRef = receiverType
                     symbol = FirAnonymousFunctionSymbol()
@@ -820,13 +855,13 @@ class RawFirBuilder(
                 FirSimpleFunctionBuilder().apply {
                     receiverTypeRef = receiverType
                     name = function.nameAsSafeName
-                    labelName = name.identifier
+                    labelName = runIf(!name.isSpecial) { name.identifier }
                     symbol = FirNamedFunctionSymbol(callableIdForName(function.nameAsSafeName, function.isLocal))
                     status = FirDeclarationStatusImpl(
                         if (function.isLocal) Visibilities.LOCAL else function.visibility,
                         function.modality,
                     ).apply {
-                        isExpect = function.hasExpectModifier()
+                        isExpect = function.hasExpectModifier() || function.containingClassOrObject?.hasExpectModifier() == true
                         isActual = function.hasActualModifier()
                         isOverride = function.hasModifier(OVERRIDE_KEYWORD)
                         isOperator = function.hasModifier(OPERATOR_KEYWORD)
@@ -874,11 +909,12 @@ class RawFirBuilder(
         override fun visitLambdaExpression(expression: KtLambdaExpression, data: Unit): FirElement {
             val literal = expression.functionLiteral
             val literalSource = literal.toFirSourceElement()
+            val implicitTypeRefSource = literal.toFirSourceElement(FirFakeSourceElementKind.ImplicitTypeRef)
             val returnType = buildImplicitTypeRef {
-                source = literalSource
+                source = implicitTypeRefSource
             }
             val receiverType = buildImplicitTypeRef {
-                source = literalSource
+                source = implicitTypeRefSource
             }
 
             val target: FirFunctionTarget
@@ -901,7 +937,7 @@ class RawFirBuilder(
                             session = baseSession
                             origin = FirDeclarationOrigin.Source
                             returnTypeRef = buildImplicitTypeRef {
-                                source = multiDeclaration.toFirSourceElement()
+                                source = multiDeclaration.toFirSourceElement(FirFakeSourceElementKind.ImplicitTypeRef)
                             }
                             this.name = name
                             symbol = FirVariableSymbol(name)
@@ -919,7 +955,7 @@ class RawFirBuilder(
                         multiParameter
                     } else {
                         val typeRef = buildImplicitTypeRef {
-                            source = this@buildAnonymousFunction.source
+                            source = implicitTypeRefSource
                         }
                         valueParameter.toFirValueParameter(typeRef)
                     }
@@ -927,7 +963,7 @@ class RawFirBuilder(
                 val expressionSource = expression.toFirSourceElement()
                 label = context.firLabels.pop() ?: context.calleeNamesForLambda.lastOrNull()?.let {
                     buildLabel {
-                        source = expressionSource
+                        source = expressionSource.withKind(FirFakeSourceElementKind.GeneratedLambdaLabel)
                         name = it.asString()
                     }
                 }
@@ -943,9 +979,11 @@ class RawFirBuilder(
                         if (statements.isEmpty()) {
                             statements.add(
                                 buildReturnExpression {
-                                    source = expressionSource
+                                    source = expressionSource.withKind(FirFakeSourceElementKind.ImplicitReturn)
                                     this.target = target
-                                    result = buildUnitExpression { source = expressionSource }
+                                    result = buildUnitExpression {
+                                        source = expressionSource.withKind(FirFakeSourceElementKind.ImplicitUnit)
+                                    }
                                 }
                             )
                         }
@@ -977,7 +1015,7 @@ class RawFirBuilder(
                 returnTypeRef = delegatedSelfTypeRef
                 val explicitVisibility = visibility
                 status = FirDeclarationStatusImpl(explicitVisibility, Modality.FINAL).apply {
-                    isExpect = hasExpectModifier()
+                    isExpect = hasExpectModifier() || owner.hasExpectModifier()
                     isActual = hasActualModifier()
                     isInner = owner.hasModifier(INNER_KEYWORD)
                     isFromSealedClass = owner.hasModifier(SEALED_KEYWORD) && explicitVisibility !== Visibilities.PRIVATE
@@ -1047,7 +1085,7 @@ class RawFirBuilder(
                     symbol = FirPropertySymbol(propertyName)
                     val delegateBuilder = delegateExpression?.let {
                         FirWrappedDelegateExpressionBuilder().apply {
-                            source = it.toFirSourceElement()
+                            source = it.toFirSourceElement(FirFakeSourceElementKind.WrappedDelegate)
                             expression = it.toFirExpression("Incorrect delegate expression")
                         }
                     }
@@ -1067,22 +1105,29 @@ class RawFirBuilder(
                         addCapturedTypeParameters(this.typeParameters)
                         val delegateBuilder = if (hasDelegate()) {
                             FirWrappedDelegateExpressionBuilder().apply {
-                                source = if (stubMode) null else delegateExpression?.toFirSourceElement()
+                                source =
+                                    if (stubMode) null else delegateExpression?.toFirSourceElement(FirFakeSourceElementKind.WrappedDelegate)
                                 expression = { delegateExpression }.toFirExpression("Should have delegate")
                             }
                         } else null
-                        status = FirDeclarationStatusImpl(visibility, modality).apply {
-                            isExpect = hasExpectModifier()
-                            isActual = hasActualModifier()
-                            isOverride = hasModifier(OVERRIDE_KEYWORD)
-                            isConst = hasModifier(CONST_KEYWORD)
-                            isLateInit = hasModifier(LATEINIT_KEYWORD)
-                        }
 
                         getter = this@toFirProperty.getter.toFirPropertyAccessor(this@toFirProperty, propertyType, isGetter = true)
                         setter = if (isVar) {
                             this@toFirProperty.setter.toFirPropertyAccessor(this@toFirProperty, propertyType, isGetter = false)
                         } else null
+
+                        // Upward propagation of `inline` and `external` modifiers (from accessors to property)
+                        // Note that, depending on `var` or `val`, checking setter's modifiers should be careful: for `val`, setter doesn't
+                        // exist (null); for `var`, the retrieval of the specific modifier is supposed to be `true`
+                        status = FirDeclarationStatusImpl(visibility, modality).apply {
+                            isExpect = hasExpectModifier() || containingClassOrObject?.hasExpectModifier() == true
+                            isActual = hasActualModifier()
+                            isOverride = hasModifier(OVERRIDE_KEYWORD)
+                            isConst = hasModifier(CONST_KEYWORD)
+                            isLateInit = hasModifier(LATEINIT_KEYWORD)
+                            isInline = hasModifier(INLINE_KEYWORD) || (getter!!.isInline && setter?.isInline != false)
+                            isExternal = hasModifier(EXTERNAL_KEYWORD) || (getter!!.isExternal && setter?.isExternal != false)
+                        }
 
                         val receiver = delegateExpression?.toFirExpression("Should have delegate")
                         generateAccessorsByDelegate(
@@ -1276,7 +1321,7 @@ class RawFirBuilder(
         }
 
         override fun visitReturnExpression(expression: KtReturnExpression, data: Unit): FirElement {
-            val source = expression.toFirSourceElement()
+            val source = expression.toFirSourceElement(FirFakeSourceElementKind.ImplicitUnit)
             val result = expression.returnedExpression?.toFirExpression("Incorrect return expression")
                 ?: buildUnitExpression { this.source = source }
             return result.toReturn(source, expression.getTargetLabel()?.getReferencedName())
@@ -1303,7 +1348,7 @@ class RawFirBuilder(
                 source = expression.toFirSourceElement()
                 val ktCondition = expression.condition
                 branches += buildWhenBranch {
-                    source = ktCondition?.toFirSourceElement()
+                    source = ktCondition?.toFirSourceElement(FirFakeSourceElementKind.WhenCondition)
                     condition = ktCondition.toFirExpression("If statement should have condition")
                     result = expression.then.toFirBlock()
                 }
@@ -1343,6 +1388,7 @@ class RawFirBuilder(
                 else -> null
             }
             val hasSubject = subjectExpression != null
+
             @OptIn(FirContractViolation::class)
             val ref = FirExpressionRef<FirWhenExpression>()
             return buildWhenExpression {
@@ -1358,7 +1404,6 @@ class RawFirBuilder(
                             buildWhenBranch {
                                 source = entrySource
                                 condition = entry.conditions.toFirWhenCondition(
-                                    entrySource,
                                     ref,
                                     { toFirExpression(it) },
                                     { toFirOrErrorType() },
@@ -1405,16 +1450,16 @@ class RawFirBuilder(
         override fun visitForExpression(expression: KtForExpression, data: Unit?): FirElement {
             val rangeExpression = expression.loopRange.toFirExpression("No range in for loop")
             val ktParameter = expression.loopParameter
-            val loopSource = expression.toFirSourceElement()
+            val fakeSource = expression.toFirPsiSourceElement(FirFakeSourceElementKind.DesugaredForLoop)
             return buildBlock {
-                source = loopSource
-                val rangeSource = expression.loopRange?.toFirSourceElement()
+                source = fakeSource
+                val rangeSource = expression.loopRange?.toFirSourceElement(FirFakeSourceElementKind.DesugaredForLoop)
                 val iteratorVal = generateTemporaryVariable(
                     baseSession, rangeSource, Name.special("<iterator>"),
                     buildFunctionCall {
-                        source = loopSource
+                        source = fakeSource
                         calleeReference = buildSimpleNamedReference {
-                            source = loopSource
+                            source = fakeSource
                             name = Name.identifier("iterator")
                         }
                         explicitReceiver = rangeExpression
@@ -1422,14 +1467,14 @@ class RawFirBuilder(
                 )
                 statements += iteratorVal
                 statements += FirWhileLoopBuilder().apply {
-                    source = loopSource
+                    source = expression.toFirSourceElement()
                     condition = buildFunctionCall {
-                        source = loopSource
+                        source = fakeSource
                         calleeReference = buildSimpleNamedReference {
-                            source = loopSource
+                            source = fakeSource
                             name = Name.identifier("hasNext")
                         }
-                        explicitReceiver = generateResolvedAccessExpression(loopSource, iteratorVal)
+                        explicitReceiver = generateResolvedAccessExpression(fakeSource, iteratorVal)
                     }
                 }.configure {
                     // NB: just body.toFirBlock() isn't acceptable here because we need to add some statements
@@ -1437,7 +1482,7 @@ class RawFirBuilder(
                         is KtBlockExpression -> configureBlockWithoutBuilding(body)
                         null -> FirBlockBuilder()
                         else -> FirBlockBuilder().apply {
-                            source = body.toFirSourceElement()
+                            source = body.toFirSourceElement(FirFakeSourceElementKind.DesugaredForLoop)
                             statements += body.toFirStatement()
                         }
                     }
@@ -1447,12 +1492,12 @@ class RawFirBuilder(
                             session = baseSession, source = expression.loopParameter?.toFirSourceElement(),
                             name = if (multiDeclaration != null) Name.special("<destruct>") else ktParameter.nameAsSafeName,
                             initializer = buildFunctionCall {
-                                source = loopSource
+                                source = fakeSource
                                 calleeReference = buildSimpleNamedReference {
-                                    source = loopSource
+                                    source = fakeSource
                                     name = Name.identifier("next")
                                 }
-                                explicitReceiver = generateResolvedAccessExpression(loopSource, iteratorVal)
+                                explicitReceiver = generateResolvedAccessExpression(fakeSource, iteratorVal)
                             },
                             typeRef = ktParameter.typeReference.toFirOrImplicitType(),
                         )
@@ -1629,7 +1674,7 @@ class RawFirBuilder(
 
                 else -> {
                     buildSimpleNamedReference {
-                        source = defaultSource
+                        source = defaultSource.withKind(FirFakeSourceElementKind.ImplicitInvokeCall)
                         name = OperatorNameConventions.INVOKE
                     } to calleeExpression.toFirExpression("Incorrect invoke receiver")
                 }
@@ -1716,7 +1761,7 @@ class RawFirBuilder(
                 val sourceElement = expression.toFirSourceElement()
                 source = sourceElement
                 calleeReference = buildExplicitThisReference {
-                    source = sourceElement
+                    source = sourceElement.withKind(FirFakeSourceElementKind.ExplicitThisOrSuperReference)
                     labelName = expression.getLabelName()
                 }
             }
@@ -1728,7 +1773,7 @@ class RawFirBuilder(
             return buildQualifiedAccessExpression {
                 this.source = source
                 calleeReference = buildExplicitSuperReference {
-                    this.source
+                    source.withKind(FirFakeSourceElementKind.ExplicitThisOrSuperReference)
                     labelName = expression.getLabelName()
                     superTypeRef = superType.toFirOrImplicitType()
                 }
@@ -1742,12 +1787,12 @@ class RawFirBuilder(
 
         override fun visitLabeledExpression(expression: KtLabeledExpression, data: Unit): FirElement {
             val sourceElement = expression.toFirSourceElement()
-            val labelName = expression.getLabelName()
+            val label = expression.getTargetLabel()
             val size = context.firLabels.size
-            if (labelName != null) {
+            if (label != null) {
                 context.firLabels += buildLabel {
-                    source = sourceElement
-                    name = labelName
+                    source = label.toFirPsiSourceElement()
+                    name = label.getReferencedName()
                 }
             }
             val result = expression.baseExpression?.accept(this, data)

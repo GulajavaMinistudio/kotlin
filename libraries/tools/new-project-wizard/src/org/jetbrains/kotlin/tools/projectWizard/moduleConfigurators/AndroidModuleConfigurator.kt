@@ -14,7 +14,7 @@ import org.jetbrains.kotlin.tools.projectWizard.core.entity.settings.ModuleConfi
 import org.jetbrains.kotlin.tools.projectWizard.core.entity.settings.PluginSettingReference
 import org.jetbrains.kotlin.tools.projectWizard.core.entity.settings.SettingType
 import org.jetbrains.kotlin.tools.projectWizard.core.entity.settings.reference
-import org.jetbrains.kotlin.tools.projectWizard.core.service.kotlinVersionKind
+import org.jetbrains.kotlin.tools.projectWizard.core.service.WizardKotlinVersion
 import org.jetbrains.kotlin.tools.projectWizard.ir.buildsystem.*
 import org.jetbrains.kotlin.tools.projectWizard.ir.buildsystem.gradle.AndroidConfigIR
 import org.jetbrains.kotlin.tools.projectWizard.library.MavenArtifact
@@ -104,6 +104,16 @@ interface AndroidModuleConfigurator : ModuleConfigurator,
             "src" / "main" / "AndroidManifest.xml"
         )
 
+        val colorsXml = FileTemplateDescriptor(
+            "android/colors.xml",
+            "src" / "main" / "res" / "values" / "colors.xml"
+        )
+
+        val stylesXml = FileTemplateDescriptor(
+            "android/styles.xml",
+            "src" / "main" / "res" / "values" / "styles.xml"
+        )
+
         fun mainActivityKt(javaPackage: JavaPackage) = FileTemplateDescriptor(
             "android/MainActivity.kt.vm",
             "src" / "main" / "java" / javaPackage.asPath() / "MainActivity.kt"
@@ -111,11 +121,11 @@ interface AndroidModuleConfigurator : ModuleConfigurator,
     }
 
     companion object {
-        fun createRepositories(kotlinVersion: Version) = buildList<Repository> {
+        fun createRepositories(kotlinVersion: WizardKotlinVersion) = buildList<Repository> {
             +DefaultRepository.GRADLE_PLUGIN_PORTAL
             +DefaultRepository.GOOGLE
             +DefaultRepository.JCENTER
-            addIfNotNull(kotlinVersion.kotlinVersionKind.repository)
+            +kotlinVersion.repository
         }
     }
 }

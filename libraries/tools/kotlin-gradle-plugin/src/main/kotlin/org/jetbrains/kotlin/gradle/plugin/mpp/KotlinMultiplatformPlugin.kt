@@ -18,6 +18,7 @@ import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.api.publish.maven.internal.publication.MavenPublicationInternal
 import org.gradle.api.publish.maven.tasks.AbstractPublishToMaven
+import org.gradle.api.tasks.TaskProvider
 import org.gradle.api.tasks.compile.AbstractCompile
 import org.gradle.jvm.tasks.Jar
 import org.gradle.util.ConfigureUtil
@@ -36,6 +37,10 @@ import org.jetbrains.kotlin.gradle.plugin.statistics.KotlinBuildStatsService
 import org.jetbrains.kotlin.gradle.scripting.internal.ScriptingGradleSubplugin
 import org.jetbrains.kotlin.gradle.targets.js.ir.KotlinJsIrTargetPreset
 import org.jetbrains.kotlin.gradle.targets.metadata.isKotlinGranularMetadataEnabled
+import org.jetbrains.kotlin.gradle.tasks.locateOrRegisterTask
+import org.jetbrains.kotlin.gradle.tasks.locateTask
+import org.jetbrains.kotlin.gradle.tasks.registerTask
+import org.jetbrains.kotlin.gradle.tasks.withType
 import org.jetbrains.kotlin.gradle.utils.*
 import org.jetbrains.kotlin.konan.target.HostManager
 import org.jetbrains.kotlin.konan.target.KonanTarget.*
@@ -337,7 +342,7 @@ internal fun applyUserDefinedAttributes(target: AbstractKotlinTarget) {
     }
 }
 
-internal fun sourcesJarTask(compilation: KotlinCompilation<*>, componentName: String?, artifactNameAppendix: String): Jar =
+internal fun sourcesJarTask(compilation: KotlinCompilation<*>, componentName: String?, artifactNameAppendix: String): TaskProvider<Jar> =
     sourcesJarTask(compilation.target.project, lazy { compilation.allKotlinSourceSets }, componentName, artifactNameAppendix)
 
 internal fun sourcesJarTask(
@@ -345,20 +350,24 @@ internal fun sourcesJarTask(
     sourceSets: Lazy<Set<KotlinSourceSet>>,
     componentName: String?,
     artifactNameAppendix: String
-): Jar {
+): TaskProvider<Jar> {
     val taskName = lowerCamelCaseName(componentName, "sourcesJar")
 
-    (project.tasks.findByName(taskName) as? Jar)?.let { return it }
+    project.locateTask<Jar>(taskName)?.let {
+        return it
+    }
 
-    val result = project.tasks.create(taskName, Jar::class.java) { sourcesJar ->
+    val result = project.registerTask<Jar>(taskName) { sourcesJar ->
         sourcesJar.archiveAppendix.set(artifactNameAppendix)
         sourcesJar.archiveClassifier.set("sources")
     }
 
     project.whenEvaluated {
-        sourceSets.value.forEach { sourceSet ->
-            result.from(sourceSet.kotlin) { copySpec ->
-                copySpec.into(sourceSet.name)
+        result.configure {
+            sourceSets.value.forEach { sourceSet ->
+                it.from(sourceSet.kotlin) { copySpec ->
+                    copySpec.into(sourceSet.name)
+                }
             }
         }
     }
@@ -371,7 +380,7 @@ internal fun Project.setupGeneralKotlinExtensionParameters() {
         CompilationSourceSetUtil.compilationsBySourceSets(project).filterValues { compilations ->
             compilations.any {
                 // kotlin main compilation
-                it.name == KotlinCompilation.MAIN_COMPILATION_NAME
+                it.isMain()
                         // android compilation which is NOT in tested variant
                         || (it as? KotlinJvmAndroidCompilation)?.let { getTestedVariantData(it.androidVariant) == null } == true
             }

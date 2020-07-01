@@ -113,8 +113,8 @@ class IntegerLiteralTypeApproximationTransformer(
         val expectedType: ConeKotlinType? = when {
             !leftIsIlt && !rightIsIlt -> return operatorCall.compose()
             leftIsIlt && rightIsIlt -> null
-            leftIsIlt -> rightArgument.typeRef.coneTypeUnsafe<ConeKotlinType>()
-            rightIsIlt -> leftArgument.typeRef.coneTypeUnsafe<ConeKotlinType>()
+            leftIsIlt -> rightArgument.typeRef.coneType
+            rightIsIlt -> leftArgument.typeRef.coneType
             else -> throw IllegalStateException()
         }
 
@@ -151,7 +151,7 @@ fun FirFunctionCall.getOriginalFunction(): FirCallableDeclaration<*>? {
     return symbol?.fir as? FirCallableDeclaration<*>
 }
 
-class IntegerOperatorsTypeUpdater(val approximator: IntegerLiteralTypeApproximationTransformer) : FirTransformer<Nothing?>() {
+class IntegerOperatorsTypeUpdater(private val approximator: IntegerLiteralTypeApproximationTransformer) : FirTransformer<Nothing?>() {
     override fun <E : FirElement> transformElement(element: E, data: Nothing?): CompositeTransformResult<E> {
         return element.compose()
     }
@@ -160,7 +160,7 @@ class IntegerOperatorsTypeUpdater(val approximator: IntegerLiteralTypeApproximat
         val function: FirCallableDeclaration<*> = functionCall.getOriginalFunction() ?: return functionCall.compose()
 
         if (function !is FirIntegerOperator) {
-            val expectedType = function.receiverTypeRef?.coneTypeSafe<ConeKotlinType>()
+            val expectedType = function.receiverTypeRef?.coneType
             return functionCall.transformExplicitReceiver(approximator, expectedType).compose()
         }
         // TODO: maybe unsafe?
@@ -175,9 +175,8 @@ class IntegerOperatorsTypeUpdater(val approximator: IntegerLiteralTypeApproximat
                 else -> throw IllegalStateException()
             }
             else -> {
-                val argumentType = functionCall.argument.typeRef.coneTypeUnsafe<ConeKotlinType>()
                 // TODO: handle overflow
-                when (argumentType) {
+                when (val argumentType = functionCall.argument.typeRef.coneType) {
                     is ConeIntegerLiteralType -> {
                         val argumentValue = argumentType.value
                         val divisionByZero = argumentValue == 0L
@@ -210,7 +209,13 @@ class IntegerOperatorsTypeUpdater(val approximator: IntegerLiteralTypeApproximat
                 }
             }
         }
-        functionCall.replaceTypeRef(functionCall.resultType.resolvedTypeFromPrototype(ConeIntegerLiteralTypeImpl(resultValue, isUnsigned = receiverType.isUnsigned)))
+        val newTypeRef = functionCall.resultType.resolvedTypeFromPrototype(
+            ConeIntegerLiteralTypeImpl(
+                resultValue,
+                isUnsigned = receiverType.isUnsigned
+            )
+        )
+        functionCall.replaceTypeRef(newTypeRef)
         return functionCall.toOperatorCall().compose()
     }
 }

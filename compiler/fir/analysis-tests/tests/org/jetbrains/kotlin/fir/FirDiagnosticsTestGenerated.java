@@ -193,6 +193,11 @@ public class FirDiagnosticsTestGenerated extends AbstractFirDiagnosticsTest {
         runTest("compiler/fir/analysis-tests/testData/resolve/genericFunctions.kt");
     }
 
+    @TestMetadata("genericReceiverPropertyOverride.kt")
+    public void testGenericReceiverPropertyOverride() throws Exception {
+        runTest("compiler/fir/analysis-tests/testData/resolve/genericReceiverPropertyOverride.kt");
+    }
+
     @TestMetadata("incorrectSuperCall.kt")
     public void testIncorrectSuperCall() throws Exception {
         runTest("compiler/fir/analysis-tests/testData/resolve/incorrectSuperCall.kt");
@@ -286,6 +291,11 @@ public class FirDiagnosticsTestGenerated extends AbstractFirDiagnosticsTest {
     @TestMetadata("objectInnerClass.kt")
     public void testObjectInnerClass() throws Exception {
         runTest("compiler/fir/analysis-tests/testData/resolve/objectInnerClass.kt");
+    }
+
+    @TestMetadata("offOrderMultiBoundGenericOverride.kt")
+    public void testOffOrderMultiBoundGenericOverride() throws Exception {
+        runTest("compiler/fir/analysis-tests/testData/resolve/offOrderMultiBoundGenericOverride.kt");
     }
 
     @TestMetadata("problems2.kt")
@@ -604,6 +614,11 @@ public class FirDiagnosticsTestGenerated extends AbstractFirDiagnosticsTest {
             runTest("compiler/fir/analysis-tests/testData/resolve/callResolution/debugInfoCall.kt");
         }
 
+        @TestMetadata("errorCandidates.kt")
+        public void testErrorCandidates() throws Exception {
+            runTest("compiler/fir/analysis-tests/testData/resolve/callResolution/errorCandidates.kt");
+        }
+
         @TestMetadata("extensionInvokeAfterSafeCall.kt")
         public void testExtensionInvokeAfterSafeCall() throws Exception {
             runTest("compiler/fir/analysis-tests/testData/resolve/callResolution/extensionInvokeAfterSafeCall.kt");
@@ -622,6 +637,16 @@ public class FirDiagnosticsTestGenerated extends AbstractFirDiagnosticsTest {
         @TestMetadata("safeCallOnTypeAlias.kt")
         public void testSafeCallOnTypeAlias() throws Exception {
             runTest("compiler/fir/analysis-tests/testData/resolve/callResolution/safeCallOnTypeAlias.kt");
+        }
+
+        @TestMetadata("syntheticPropertiesWrongImplicitReceiver.kt")
+        public void testSyntheticPropertiesWrongImplicitReceiver() throws Exception {
+            runTest("compiler/fir/analysis-tests/testData/resolve/callResolution/syntheticPropertiesWrongImplicitReceiver.kt");
+        }
+
+        @TestMetadata("typeAliasWithNotNullBound.kt")
+        public void testTypeAliasWithNotNullBound() throws Exception {
+            runTest("compiler/fir/analysis-tests/testData/resolve/callResolution/typeAliasWithNotNullBound.kt");
         }
     }
 
@@ -657,6 +682,11 @@ public class FirDiagnosticsTestGenerated extends AbstractFirDiagnosticsTest {
             runTest("compiler/fir/analysis-tests/testData/resolve/cfg/complex.kt");
         }
 
+        @TestMetadata("defaultArguments.kt")
+        public void testDefaultArguments() throws Exception {
+            runTest("compiler/fir/analysis-tests/testData/resolve/cfg/defaultArguments.kt");
+        }
+
         @TestMetadata("emptyWhen.kt")
         public void testEmptyWhen() throws Exception {
             runTest("compiler/fir/analysis-tests/testData/resolve/cfg/emptyWhen.kt");
@@ -675,6 +705,11 @@ public class FirDiagnosticsTestGenerated extends AbstractFirDiagnosticsTest {
         @TestMetadata("initBlockAndInPlaceLambda.kt")
         public void testInitBlockAndInPlaceLambda() throws Exception {
             runTest("compiler/fir/analysis-tests/testData/resolve/cfg/initBlockAndInPlaceLambda.kt");
+        }
+
+        @TestMetadata("innerClassInAnonymousObject.kt")
+        public void testInnerClassInAnonymousObject() throws Exception {
+            runTest("compiler/fir/analysis-tests/testData/resolve/cfg/innerClassInAnonymousObject.kt");
         }
 
         @TestMetadata("inplaceLambdaInControlFlowExpressions.kt")
@@ -1444,6 +1479,11 @@ public class FirDiagnosticsTestGenerated extends AbstractFirDiagnosticsTest {
             runTest("compiler/fir/analysis-tests/testData/resolve/inference/lambdaAsReturnStatementOfLambda.kt");
         }
 
+        @TestMetadata("nestedExtensionFunctionType.kt")
+        public void testNestedExtensionFunctionType() throws Exception {
+            runTest("compiler/fir/analysis-tests/testData/resolve/inference/nestedExtensionFunctionType.kt");
+        }
+
         @TestMetadata("nestedLambdas.kt")
         public void testNestedLambdas() throws Exception {
             runTest("compiler/fir/analysis-tests/testData/resolve/inference/nestedLambdas.kt");
@@ -1679,11 +1719,6 @@ public class FirDiagnosticsTestGenerated extends AbstractFirDiagnosticsTest {
             runTest("compiler/fir/analysis-tests/testData/resolve/problems/innerClassHierarchy.kt");
         }
 
-        @TestMetadata("javaAccessorConversion.kt")
-        public void testJavaAccessorConversion() throws Exception {
-            runTest("compiler/fir/analysis-tests/testData/resolve/problems/javaAccessorConversion.kt");
-        }
-
         @TestMetadata("javaQualifier.kt")
         public void testJavaQualifier() throws Exception {
             runTest("compiler/fir/analysis-tests/testData/resolve/problems/javaQualifier.kt");
@@ -1720,6 +1755,16 @@ public class FirDiagnosticsTestGenerated extends AbstractFirDiagnosticsTest {
 
         public void testAllFilesPresentInProperties() throws Exception {
             KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("compiler/fir/analysis-tests/testData/resolve/properties"), Pattern.compile("^([^.]+)\\.kt$"), null, true);
+        }
+
+        @TestMetadata("javaAccessorConversion.kt")
+        public void testJavaAccessorConversion() throws Exception {
+            runTest("compiler/fir/analysis-tests/testData/resolve/properties/javaAccessorConversion.kt");
+        }
+
+        @TestMetadata("javaAccessorsComplex.kt")
+        public void testJavaAccessorsComplex() throws Exception {
+            runTest("compiler/fir/analysis-tests/testData/resolve/properties/javaAccessorsComplex.kt");
         }
 
         @TestMetadata("noBackingFieldForExtension.kt")
@@ -2127,6 +2172,11 @@ public class FirDiagnosticsTestGenerated extends AbstractFirDiagnosticsTest {
                 runTest("compiler/fir/analysis-tests/testData/resolve/smartcasts/safeCalls/assignSafeCall.kt");
             }
 
+            @TestMetadata("boundSafeCallAndIsCheck.kt")
+            public void testBoundSafeCallAndIsCheck() throws Exception {
+                runTest("compiler/fir/analysis-tests/testData/resolve/smartcasts/safeCalls/boundSafeCallAndIsCheck.kt");
+            }
+
             @TestMetadata("safeCallAndEqualityToBool.kt")
             public void testSafeCallAndEqualityToBool() throws Exception {
                 runTest("compiler/fir/analysis-tests/testData/resolve/smartcasts/safeCalls/safeCallAndEqualityToBool.kt");
@@ -2213,6 +2263,24 @@ public class FirDiagnosticsTestGenerated extends AbstractFirDiagnosticsTest {
             public void testFlexibleWildcard() throws Exception {
                 runTest("compiler/fir/analysis-tests/testData/resolve/stdlib/j+k/flexibleWildcard.kt");
             }
+        }
+    }
+
+    @TestMetadata("compiler/fir/analysis-tests/testData/resolve/types")
+    @TestDataPath("$PROJECT_ROOT")
+    @RunWith(JUnit3RunnerWithInners.class)
+    public static class Types extends AbstractFirDiagnosticsTest {
+        private void runTest(String testDataFilePath) throws Exception {
+            KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
+        }
+
+        public void testAllFilesPresentInTypes() throws Exception {
+            KotlinTestUtils.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("compiler/fir/analysis-tests/testData/resolve/types"), Pattern.compile("^([^.]+)\\.kt$"), null, true);
+        }
+
+        @TestMetadata("bareWithSubjectTypeAlias.kt")
+        public void testBareWithSubjectTypeAlias() throws Exception {
+            runTest("compiler/fir/analysis-tests/testData/resolve/types/bareWithSubjectTypeAlias.kt");
         }
     }
 

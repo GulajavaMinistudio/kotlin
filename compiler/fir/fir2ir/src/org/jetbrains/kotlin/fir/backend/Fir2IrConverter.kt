@@ -5,14 +5,18 @@
 
 package org.jetbrains.kotlin.fir.backend
 
-import org.jetbrains.kotlin.backend.common.ir.BuiltinSymbolsBase
 import org.jetbrains.kotlin.config.LanguageVersionSettings
 import org.jetbrains.kotlin.fir.FirSession
+import org.jetbrains.kotlin.fir.backend.generators.AnnotationGenerator
+import org.jetbrains.kotlin.fir.backend.generators.CallAndReferenceGenerator
+import org.jetbrains.kotlin.fir.backend.generators.FakeOverrideGenerator
+import org.jetbrains.kotlin.fir.backend.evaluate.evaluateConstants
 import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.descriptors.FirModuleDescriptor
 import org.jetbrains.kotlin.fir.psi
 import org.jetbrains.kotlin.fir.resolve.ScopeSession
 import org.jetbrains.kotlin.fir.signaturer.FirMangler
+import org.jetbrains.kotlin.fir.symbols.FirBuiltinSymbols
 import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.declarations.impl.IrFileImpl
 import org.jetbrains.kotlin.ir.declarations.impl.IrModuleFragmentImpl
@@ -61,8 +65,9 @@ class Fir2IrConverter(
 
     fun processClassHeaders(file: FirFile) {
         file.declarations.forEach {
-            if (it is FirRegularClass) {
-                processClassAndNestedClassHeaders(it)
+            when (it) {
+                is FirRegularClass -> processClassAndNestedClassHeaders(it)
+                is FirTypeAlias -> classifierStorage.registerTypeAlias(it, declarationStorage.getIrFile(file))
             }
         }
     }
@@ -153,7 +158,7 @@ class Fir2IrConverter(
                 null
             }
             else -> {
-                throw AssertionError("Unexpected member: ${declaration::class}")
+                error("Unexpected member: ${declaration::class}")
             }
         }
     }
@@ -172,15 +177,21 @@ class Fir2IrConverter(
             val moduleDescriptor = FirModuleDescriptor(session)
             val symbolTable = SymbolTable(signaturer)
             val constantValueGenerator = ConstantValueGenerator(moduleDescriptor, symbolTable)
-            val typeTranslator = TypeTranslator(symbolTable, languageVersionSettings, moduleDescriptor.builtIns)
+            val typeTranslator = TypeTranslator(
+                symbolTable,
+                languageVersionSettings,
+                moduleDescriptor.builtIns,
+                extensions = generatorExtensions
+            )
             constantValueGenerator.typeTranslator = typeTranslator
             typeTranslator.constantValueGenerator = constantValueGenerator
             val builtIns = IrBuiltIns(moduleDescriptor.builtIns, typeTranslator, symbolTable)
-            BuiltinSymbolsBase(builtIns, moduleDescriptor.builtIns, symbolTable)
+            FirBuiltinSymbols(builtIns, moduleDescriptor.builtIns, symbolTable)
             val sourceManager = PsiSourceManager()
             val components = Fir2IrComponentsStorage(session, scopeSession, symbolTable, builtIns, mangler)
-            val declarationStorage = Fir2IrDeclarationStorage(components, moduleDescriptor)
+            val conversionScope = Fir2IrConversionScope()
             val classifierStorage = Fir2IrClassifierStorage(components)
+            val declarationStorage = Fir2IrDeclarationStorage(components, moduleDescriptor)
             val typeConverter = Fir2IrTypeConverter(components)
             components.declarationStorage = declarationStorage
             components.classifierStorage = classifierStorage
@@ -205,11 +216,18 @@ class Fir2IrConverter(
             for (firFile in firFiles) {
                 converter.processClassHeaders(firFile)
             }
+            val fakeOverrideGenerator = FakeOverrideGenerator(
+                session, scopeSession, classifierStorage, declarationStorage, conversionScope, fakeOverrideMode
+            )
+            components.fakeOverrideGenerator = fakeOverrideGenerator
             for (firFile in firFiles) {
                 converter.processFileAndClassMembers(firFile)
             }
 
-            val fir2irVisitor = Fir2IrVisitor(converter, components, fakeOverrideMode)
+            val fir2irVisitor = Fir2IrVisitor(converter, components, conversionScope)
+            val callGenerator = CallAndReferenceGenerator(components, fir2irVisitor, conversionScope)
+            components.callGenerator = callGenerator
+            declarationStorage.annotationGenerator = AnnotationGenerator(components)
             for (firFile in firFiles) {
                 val irFile = firFile.accept(fir2irVisitor, null) as IrFile
                 val fileEntry = sourceManager.getOrCreateFileEntry(firFile.psi as KtFile)
@@ -222,6 +240,8 @@ class Fir2IrConverter(
                 val parentClass = stubGenerator.generateOrGetFacadeClass(descriptor as WrappedDeclarationDescriptor<*>)
                 descriptor.owner.parent = parentClass ?: continue
             }
+
+            evaluateConstants(irModuleFragment)
 
             return Fir2IrResult(irModuleFragment, symbolTable, sourceManager, components)
         }

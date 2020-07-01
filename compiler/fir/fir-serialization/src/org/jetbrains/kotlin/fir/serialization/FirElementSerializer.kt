@@ -98,7 +98,7 @@ class FirElementSerializer private constructor(
             regularClass?.isExternal == true,
             regularClass?.isExpect == true,
             regularClass?.isInline == true,
-            false // TODO: klass.isFun not supported yet
+            regularClass?.isFun == true
         )
         if (flags != builder.flags) {
             builder.flags = flags
@@ -488,13 +488,11 @@ class FirElementSerializer private constructor(
         }
 
         if (parameter.isVararg) {
-            val varargElementType = parameter.returnTypeRef.coneTypeSafe<ConeKotlinType>()?.varargElementType(session)
-            if (varargElementType != null) {
-                if (useTypeTable()) {
-                    builder.varargElementTypeId = typeId(varargElementType)
-                } else {
-                    builder.setVarargElementType(typeProto(varargElementType))
-                }
+            val varargElementType = parameter.returnTypeRef.coneType.varargElementType(session)
+            if (useTypeTable()) {
+                builder.varargElementTypeId = typeId(varargElementType)
+            } else {
+                builder.setVarargElementType(typeProto(varargElementType))
             }
         }
 
@@ -544,7 +542,7 @@ class FirElementSerializer private constructor(
     fun typeId(type: ConeKotlinType): Int = typeTable[typeProto(type)]
 
     internal fun typeProto(typeRef: FirTypeRef): ProtoBuf.Type.Builder {
-        return typeProto((typeRef as FirResolvedTypeRef).type)
+        return typeProto(typeRef.coneType)
     }
 
     internal fun typeProto(type: ConeKotlinType): ProtoBuf.Type.Builder {
@@ -667,15 +665,18 @@ class FirElementSerializer private constructor(
     }
 
     private fun getAccessorFlags(accessor: FirPropertyAccessor, property: FirProperty): Int {
+        // [FirDefaultPropertyAccessor]---a property accessor without body---can still hold other information, such as annotations,
+        // user-contributed visibility, and modifiers, such as `external` or `inline`.
         val isDefault = accessor is FirDefaultPropertyAccessor &&
-                accessor.annotations.isEmpty() && accessor.visibility == property.visibility
+                accessor.annotations.isEmpty() && accessor.visibility == property.visibility &&
+                !accessor.isExternal && !accessor.isInline
         return Flags.getAccessorFlags(
             accessor.nonSourceAnnotations(session).isNotEmpty(),
             ProtoEnumFlags.visibility(normalizeVisibility(accessor)),
             ProtoEnumFlags.modality(accessor.modality!!),
             !isDefault,
-            accessor.status.isExternal,
-            accessor.status.isInline
+            accessor.isExternal,
+            accessor.isInline
         )
     }
 

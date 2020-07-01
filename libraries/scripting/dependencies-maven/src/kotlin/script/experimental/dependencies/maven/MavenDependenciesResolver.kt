@@ -13,6 +13,8 @@ import org.eclipse.aether.util.repository.AuthenticationBuilder
 import java.io.File
 import java.util.*
 import kotlin.script.experimental.api.ResultWithDiagnostics
+import kotlin.script.experimental.api.SourceCode
+import kotlin.script.experimental.api.asSuccess
 import kotlin.script.experimental.dependencies.ExternalDependenciesResolver
 import kotlin.script.experimental.dependencies.RepositoryCoordinates
 import kotlin.script.experimental.dependencies.impl.makeResolveFailureResult
@@ -51,7 +53,11 @@ class MavenDependenciesResolver : ExternalDependenciesResolver {
         if (this.isNotBlank() && this.count { it == ':' } >= 2) DefaultArtifact(this)
         else null
 
-    override suspend fun resolve(artifactCoordinates: String): ResultWithDiagnostics<List<File>> {
+    override suspend fun resolve(
+        artifactCoordinates: String,
+        options: ExternalDependenciesResolver.Options,
+        sourceCodeLocation: SourceCode.LocationWithId?
+    ): ResultWithDiagnostics<List<File>> {
 
         val artifactId = artifactCoordinates.toMavenArtifact()!!
 
@@ -60,18 +66,22 @@ class MavenDependenciesResolver : ExternalDependenciesResolver {
             if (deps != null)
                 return ResultWithDiagnostics.Success(deps.map { it.file })
         } catch (e: DependencyResolutionException) {
-            return makeResolveFailureResult(e.message ?: "unknown error")
+            return makeResolveFailureResult(e.message ?: "unknown error", sourceCodeLocation)
         }
-        return makeResolveFailureResult(allRepositories().map { "$it: $artifactId not found" })
+        return makeResolveFailureResult(allRepositories().map { "$it: $artifactId not found" }, sourceCodeLocation)
     }
 
     private fun tryResolveEnvironmentVariable(str: String) =
         if (str.startsWith("$")) System.getenv(str.substring(1)) ?: str
         else str
 
-    override fun addRepository(repositoryCoordinates: RepositoryCoordinates) {
+    override fun addRepository(
+        repositoryCoordinates: RepositoryCoordinates,
+        options: ExternalDependenciesResolver.Options,
+        sourceCodeLocation: SourceCode.LocationWithId?
+    ): ResultWithDiagnostics<Boolean> {
         val url = repositoryCoordinates.toRepositoryUrlOrNull()
-            ?: throw IllegalArgumentException("Invalid Maven repository URL: ${repositoryCoordinates}")
+            ?: return false.asSuccess()
         val repo = RemoteRepository.Builder(
             repositoryCoordinates.string,
             "default",
@@ -91,5 +101,6 @@ class MavenDependenciesResolver : ExternalDependenciesResolver {
             }
         }
         repos.add(repo.build())
+        return true.asSuccess()
     }
 }

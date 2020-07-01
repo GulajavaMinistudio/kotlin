@@ -17,6 +17,7 @@ import org.jetbrains.kotlin.fir.expressions.FirResolvable
 import org.jetbrains.kotlin.fir.FirTargetElement
 import org.jetbrains.kotlin.fir.declarations.FirDeclarationStatus
 import org.jetbrains.kotlin.fir.declarations.FirResolvedDeclarationStatus
+import org.jetbrains.kotlin.fir.declarations.FirControlFlowGraphOwner
 import org.jetbrains.kotlin.fir.expressions.FirStatement
 import org.jetbrains.kotlin.fir.expressions.FirExpression
 import org.jetbrains.kotlin.fir.declarations.FirDeclaration
@@ -80,6 +81,7 @@ import org.jetbrains.kotlin.fir.expressions.FirAugmentedArraySetCall
 import org.jetbrains.kotlin.fir.expressions.FirClassReferenceExpression
 import org.jetbrains.kotlin.fir.expressions.FirErrorExpression
 import org.jetbrains.kotlin.fir.declarations.FirErrorFunction
+import org.jetbrains.kotlin.fir.declarations.FirErrorProperty
 import org.jetbrains.kotlin.fir.expressions.FirQualifiedAccessExpression
 import org.jetbrains.kotlin.fir.expressions.FirFunctionCall
 import org.jetbrains.kotlin.fir.expressions.FirDelegatedConstructorCall
@@ -179,6 +181,10 @@ abstract class FirTransformer<in D> : FirVisitor<CompositeTransformResult<FirEle
 
     open fun transformResolvedDeclarationStatus(resolvedDeclarationStatus: FirResolvedDeclarationStatus, data: D): CompositeTransformResult<FirDeclarationStatus> {
         return transformElement(resolvedDeclarationStatus, data)
+    }
+
+    open fun transformControlFlowGraphOwner(controlFlowGraphOwner: FirControlFlowGraphOwner, data: D): CompositeTransformResult<FirControlFlowGraphOwner> {
+        return transformElement(controlFlowGraphOwner, data)
     }
 
     open fun transformStatement(statement: FirStatement, data: D): CompositeTransformResult<FirStatement> {
@@ -433,6 +439,10 @@ abstract class FirTransformer<in D> : FirVisitor<CompositeTransformResult<FirEle
         return transformElement(errorFunction, data)
     }
 
+    open fun transformErrorProperty(errorProperty: FirErrorProperty, data: D): CompositeTransformResult<FirStatement> {
+        return transformElement(errorProperty, data)
+    }
+
     open fun transformQualifiedAccessExpression(qualifiedAccessExpression: FirQualifiedAccessExpression, data: D): CompositeTransformResult<FirStatement> {
         return transformElement(qualifiedAccessExpression, data)
     }
@@ -663,6 +673,10 @@ abstract class FirTransformer<in D> : FirVisitor<CompositeTransformResult<FirEle
 
     final override fun visitResolvedDeclarationStatus(resolvedDeclarationStatus: FirResolvedDeclarationStatus, data: D): CompositeTransformResult<FirDeclarationStatus> {
         return transformResolvedDeclarationStatus(resolvedDeclarationStatus, data)
+    }
+
+    final override fun visitControlFlowGraphOwner(controlFlowGraphOwner: FirControlFlowGraphOwner, data: D): CompositeTransformResult<FirControlFlowGraphOwner> {
+        return transformControlFlowGraphOwner(controlFlowGraphOwner, data)
     }
 
     final override fun visitStatement(statement: FirStatement, data: D): CompositeTransformResult<FirStatement> {
@@ -915,6 +929,10 @@ abstract class FirTransformer<in D> : FirVisitor<CompositeTransformResult<FirEle
 
     final override fun visitErrorFunction(errorFunction: FirErrorFunction, data: D): CompositeTransformResult<FirStatement> {
         return transformErrorFunction(errorFunction, data)
+    }
+
+    final override fun visitErrorProperty(errorProperty: FirErrorProperty, data: D): CompositeTransformResult<FirStatement> {
+        return transformErrorProperty(errorProperty, data)
     }
 
     final override fun visitQualifiedAccessExpression(qualifiedAccessExpression: FirQualifiedAccessExpression, data: D): CompositeTransformResult<FirStatement> {

@@ -11,7 +11,7 @@ import org.jetbrains.kotlin.descriptors.SimpleFunctionDescriptor
 import org.jetbrains.kotlin.descriptors.SourceElement
 import org.jetbrains.kotlin.descriptors.commonizer.cir.CirFunction
 import org.jetbrains.kotlin.descriptors.commonizer.mergedtree.CirFunctionNode
-import org.jetbrains.kotlin.descriptors.commonizer.mergedtree.indexOfCommon
+import org.jetbrains.kotlin.descriptors.commonizer.mergedtree.CirNode.Companion.indexOfCommon
 import org.jetbrains.kotlin.descriptors.commonizer.utils.CommonizedGroup
 import org.jetbrains.kotlin.descriptors.impl.SimpleFunctionDescriptorImpl
 
@@ -20,17 +20,17 @@ internal fun CirFunctionNode.buildDescriptors(
     output: CommonizedGroup<SimpleFunctionDescriptor>,
     containingDeclarations: List<DeclarationDescriptor?>
 ) {
-    val commonFunction = common()
+    val commonFunction = commonDeclaration()
     val markAsExpectAndActual = commonFunction != null && commonFunction.kind != CallableMemberDescriptor.Kind.SYNTHESIZED
 
-    target.forEachIndexed { index, function ->
+    targetDeclarations.forEachIndexed { index, function ->
         function?.buildDescriptor(components, output, index, containingDeclarations, isActual = markAsExpectAndActual)
     }
 
     commonFunction?.buildDescriptor(components, output, indexOfCommon, containingDeclarations, isExpect = markAsExpectAndActual)
 
     // log stats
-    components.statsCollector?.logStats(output.toList())
+    components.statsCollector?.logStats(output)
 }
 
 private fun CirFunction.buildDescriptor(

@@ -18,7 +18,12 @@ kotlin {
     }
     js {
         browser {
-
+            testTask {
+                useKarma {
+                    useChromeHeadless()
+                    webpackConfig.cssSupport.enabled = true
+                }
+            }
         }
     }
     val hostOs = System.getProperty("os.name")

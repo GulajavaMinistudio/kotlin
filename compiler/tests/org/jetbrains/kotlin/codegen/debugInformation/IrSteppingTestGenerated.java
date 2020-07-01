@@ -98,6 +98,12 @@ public class IrSteppingTestGenerated extends AbstractIrSteppingTest {
     }
 
     @Test
+    @TestMetadata("constructorCall.kt")
+    public void testConstructorCall() throws Exception {
+        runTest("compiler/testData/debug/stepping/constructorCall.kt");
+    }
+
+    @Test
     @TestMetadata("defaultParameter.kt")
     public void testDefaultParameter() throws Exception {
         runTest("compiler/testData/debug/stepping/defaultParameter.kt");
@@ -191,6 +197,12 @@ public class IrSteppingTestGenerated extends AbstractIrSteppingTest {
     @TestMetadata("initBlocks.kt")
     public void testInitBlocks() throws Exception {
         runTest("compiler/testData/debug/stepping/initBlocks.kt");
+    }
+
+    @Test
+    @TestMetadata("initBlocksCompanion.kt")
+    public void testInitBlocksCompanion() throws Exception {
+        runTest("compiler/testData/debug/stepping/initBlocksCompanion.kt");
     }
 
     @Test

@@ -23,12 +23,14 @@ import com.intellij.psi.PsiManager
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import org.jetbrains.kotlin.idea.core.script.KotlinScriptDependenciesClassFinder
+import org.jetbrains.kotlin.idea.core.script.ScriptConfigurationManager
 import org.jetbrains.kotlin.idea.core.script.ScriptDependenciesModificationTracker
 import org.jetbrains.kotlin.idea.core.script.configuration.CompositeScriptConfigurationManager
 import org.jetbrains.kotlin.idea.core.script.debug
 import org.jetbrains.kotlin.idea.core.util.EDT
 import org.jetbrains.kotlin.idea.util.application.runReadAction
 import org.jetbrains.kotlin.idea.util.application.runWriteAction
+import org.jetbrains.kotlin.psi.KtFile
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
@@ -45,15 +47,18 @@ import java.util.concurrent.atomic.AtomicReference
  * This will start indexing.
  * Also analysis cache will be cleared and changed opened script files will be reanalyzed.
  */
-class ScriptClassRootsUpdater(
+abstract class ScriptClassRootsUpdater(
     val project: Project,
-    val manager: CompositeScriptConfigurationManager,
-    private val gatherRoots: (ScriptClassRootsBuilder) -> Unit
+    val manager: CompositeScriptConfigurationManager
 ) {
     private var lastSeen: ScriptClassRootsCache? = null
     private var invalidated: Boolean = false
     private var syncUpdateRequired: Boolean = false
     private val concurrentUpdates = AtomicInteger()
+
+    abstract fun gatherRoots(builder: ScriptClassRootsBuilder)
+
+    abstract fun afterUpdate()
 
     private fun recreateRootsCache(): ScriptClassRootsCache {
         val builder = ScriptClassRootsBuilder(project)
@@ -65,6 +70,11 @@ class ScriptClassRootsUpdater(
      * Wee need CAS due to concurrent unblocking sync update in [checkInvalidSdks]
      */
     private val cache: AtomicReference<ScriptClassRootsCache> = AtomicReference(recreateRootsCache())
+
+    init {
+        @Suppress("LeakingThis")
+        afterUpdate()
+    }
 
     val classpathRoots: ScriptClassRootsCache
         get() = cache.get()
@@ -194,6 +204,7 @@ class ScriptClassRootsUpdater(
             val old = cache.get()
             val new = recreateRootsCache()
             if (cache.compareAndSet(old, new)) {
+                afterUpdate()
                 return new.diff(lastSeen)
             }
         }
@@ -233,7 +244,7 @@ class ScriptClassRootsUpdater(
     private fun updateHighlighting(project: Project, filter: (VirtualFile) -> Boolean) {
         if (!project.isOpen) return
 
-        val openFiles = FileEditorManager.getInstance(project).openFiles
+        val openFiles = FileEditorManager.getInstance(project).allEditors.mapNotNull { it.file }
         val openedScripts = openFiles.filter { filter(it) }
 
         if (openedScripts.isEmpty()) return
@@ -243,7 +254,9 @@ class ScriptClassRootsUpdater(
 
             openedScripts.forEach {
                 PsiManager.getInstance(project).findFile(it)?.let { psiFile ->
-                    DaemonCodeAnalyzer.getInstance(project).restart(psiFile)
+                    if (psiFile is KtFile) {
+                        DaemonCodeAnalyzer.getInstance(project).restart(psiFile)
+                    }
                 }
             }
         }

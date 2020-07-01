@@ -10,12 +10,18 @@ val testCompile by configurations
 testCompile.extendsFrom(allTestsRuntime)
 val embeddableTestRuntime by configurations.creating {
     extendsFrom(allTestsRuntime)
+    attributes {
+        attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage.JAVA_RUNTIME))
+        attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category.LIBRARY))
+    }
 }
 
 dependencies {
     allTestsRuntime(commonDep("junit"))
     testCompile(project(":kotlin-scripting-ide-services-unshaded"))
     testCompile(project(":kotlin-scripting-compiler"))
+    testCompile(project(":kotlin-scripting-dependencies"))
+    testCompile(project(":kotlin-main-kts"))
     testCompile(project(":compiler:cli-common"))
 
     testRuntimeOnly(project(":kotlin-compiler"))

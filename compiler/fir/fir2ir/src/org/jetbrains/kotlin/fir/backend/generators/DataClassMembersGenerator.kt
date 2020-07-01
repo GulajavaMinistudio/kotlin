@@ -27,6 +27,7 @@ import org.jetbrains.kotlin.fir.types.impl.FirImplicitNullableAnyTypeRef
 import org.jetbrains.kotlin.fir.types.impl.FirImplicitStringTypeRef
 import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.incremental.components.NoLookupLocation
+import org.jetbrains.kotlin.ir.ObsoleteDescriptorBasedAPI
 import org.jetbrains.kotlin.ir.UNDEFINED_OFFSET
 import org.jetbrains.kotlin.ir.builders.IrGeneratorContextBase
 import org.jetbrains.kotlin.ir.declarations.*
@@ -50,6 +51,7 @@ import org.jetbrains.kotlin.name.Name
  * fir own logic that traverses class hierarchies in fir elements. Also, this one creates and passes IR elements, instead of providing how
  * to declare them, to [DataClassMembersGenerator].
  */
+@OptIn(ObsoleteDescriptorBasedAPI::class)
 class DataClassMembersGenerator(val components: Fir2IrComponents) {
 
     fun generateInlineClassMembers(klass: FirClass<*>, irClass: IrClass): List<Name> =
@@ -248,7 +250,7 @@ class DataClassMembersGenerator(val components: Fir2IrComponents) {
                                 components.irBuiltIns.booleanType -> FirImplicitBooleanTypeRef(null)
                                 components.irBuiltIns.intType -> FirImplicitIntTypeRef(null)
                                 components.irBuiltIns.stringType -> FirImplicitStringTypeRef(null)
-                                else -> throw AssertionError("Should not be here")
+                                else -> error("Unexpected synthetic data class function return type: $returnType")
                             }
                             if (irValueParameter != null) {
                                 this.valueParameters.add(
@@ -264,8 +266,7 @@ class DataClassMembersGenerator(val components: Fir2IrComponents) {
                                     }
                                 )
                             }
-                        },
-                        descriptor
+                        }
                     )
 
                 }

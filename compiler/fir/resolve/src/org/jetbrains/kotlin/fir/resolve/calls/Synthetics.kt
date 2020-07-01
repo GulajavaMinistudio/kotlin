@@ -6,11 +6,14 @@
 package org.jetbrains.kotlin.fir.resolve.calls
 
 import org.jetbrains.kotlin.fir.FirSession
+import org.jetbrains.kotlin.fir.declarations.FirDeclarationOrigin
 import org.jetbrains.kotlin.fir.declarations.FirSimpleFunction
 import org.jetbrains.kotlin.fir.declarations.isStatic
-import org.jetbrains.kotlin.fir.declarations.synthetic.FirSyntheticProperty
 import org.jetbrains.kotlin.fir.declarations.synthetic.buildSyntheticProperty
 import org.jetbrains.kotlin.fir.scopes.FirScope
+import org.jetbrains.kotlin.fir.scopes.FirTypeScope
+import org.jetbrains.kotlin.fir.scopes.ProcessorAction
+import org.jetbrains.kotlin.fir.scopes.processOverriddenFunctionsAndSelf
 import org.jetbrains.kotlin.fir.symbols.CallableId
 import org.jetbrains.kotlin.fir.symbols.StandardClassIds
 import org.jetbrains.kotlin.fir.symbols.SyntheticSymbol
@@ -33,10 +36,46 @@ class FirSyntheticFunctionSymbol(
 
 class FirSyntheticPropertiesScope(
     val session: FirSession,
-    private val baseScope: FirScope
+    private val baseScope: FirTypeScope
 ) : FirScope() {
 
-    val synthetic: MutableMap<FirCallableSymbol<*>, FirVariableSymbol<*>> = mutableMapOf()
+    companion object {
+        private const val GETTER_PREFIX = "get"
+        private const val IS_PREFIX = "is"
+
+        fun possibleGetterNamesByPropertyName(name: Name): List<Name> {
+            if (name.isSpecial) return emptyList()
+            val identifier = name.identifier
+            val capitalizedAsciiName = identifier.capitalizeAsciiOnly()
+            val capitalizedFirstWordName = identifier.capitalizeFirstWord(asciiOnly = true)
+            return listOfNotNull(
+                Name.identifier(GETTER_PREFIX + capitalizedAsciiName),
+                if (capitalizedFirstWordName == capitalizedAsciiName) null else Name.identifier(GETTER_PREFIX + capitalizedFirstWordName),
+                name.takeIf { identifier.startsWith(IS_PREFIX) }
+            ).filter {
+                propertyNameByGetMethodName(it) == name
+            }
+        }
+
+        fun setterNameByGetterName(name: Name): Name {
+            val identifier = name.identifier
+            val prefix = when {
+                identifier.startsWith("get") -> "get"
+                identifier.startsWith("is") -> "is"
+                else -> throw IllegalArgumentException()
+            }
+            return Name.identifier("set" + identifier.removePrefix(prefix))
+        }
+    }
+
+    override fun processPropertiesByName(name: Name, processor: (FirVariableSymbol<*>) -> Unit) {
+        val getterNames = possibleGetterNamesByPropertyName(name)
+        for (getterName in getterNames) {
+            baseScope.processFunctionsByName(getterName) {
+                checkGetAndCreateSynthetic(name, getterName, it, processor)
+            }
+        }
+    }
 
     private fun checkGetAndCreateSynthetic(
         propertyName: Name,
@@ -51,6 +90,8 @@ class FirSyntheticPropertiesScope(
         if (getter.isStatic) return
         val getterReturnType = (getter.returnTypeRef as? FirResolvedTypeRef)?.type
         if ((getterReturnType as? ConeClassLikeType)?.lookupTag?.classId == StandardClassIds.Unit) return
+
+        if (!getterSymbol.hasJavaOverridden()) return
 
         var matchingSetter: FirSimpleFunction? = null
         if (getterReturnType != null) {
@@ -79,43 +120,17 @@ class FirSyntheticPropertiesScope(
         processor(property.symbol)
     }
 
-    override fun processPropertiesByName(name: Name, processor: (FirVariableSymbol<*>) -> Unit) {
-        val getterNames = possibleGetterNamesByPropertyName(name)
-        for (getterName in getterNames) {
-            baseScope.processFunctionsByName(getterName) {
-                checkGetAndCreateSynthetic(name, getterName, it, processor)
-            }
-        }
-    }
-
-    companion object {
-        fun possibleGetterNamesByPropertyName(name: Name): List<Name> {
-            if (name.isSpecial) return emptyList()
-            val identifier = name.identifier
-            val capitalizedAsciiName = identifier.capitalizeAsciiOnly()
-            val capitalizedFirstWordName = identifier.capitalizeFirstWord(asciiOnly = true)
-            return listOfNotNull(
-                Name.identifier(GETTER_PREFIX + capitalizedAsciiName),
-                if (capitalizedFirstWordName == capitalizedAsciiName) null else Name.identifier(GETTER_PREFIX + capitalizedFirstWordName),
-                name.takeIf { identifier.startsWith(IS_PREFIX) }
-            ).filter {
-                propertyNameByGetMethodName(it) == name
+    private fun FirFunctionSymbol<*>.hasJavaOverridden(): Boolean {
+        var result = false
+        baseScope.processOverriddenFunctionsAndSelf(this) {
+            if (it.unwrapSubstitutionOverrides().fir.origin == FirDeclarationOrigin.Enhancement) {
+                result = true
+                ProcessorAction.STOP
+            } else {
+                ProcessorAction.NEXT
             }
         }
 
-        fun setterNameByGetterName(name: Name): Name {
-            val identifier = name.identifier
-            val prefix = when {
-                identifier.startsWith("get") -> "get"
-                identifier.startsWith("is") -> "is"
-                else -> throw IllegalArgumentException()
-            }
-            return Name.identifier("set" + identifier.removePrefix(prefix))
-        }
-
-        private const val GETTER_PREFIX = "get"
-
-        private const val IS_PREFIX = "is"
+        return result
     }
 }
-

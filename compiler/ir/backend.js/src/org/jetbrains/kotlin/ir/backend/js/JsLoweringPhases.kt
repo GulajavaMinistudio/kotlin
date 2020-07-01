@@ -15,6 +15,7 @@ import org.jetbrains.kotlin.backend.common.lower.loops.ForLoopsLowering
 import org.jetbrains.kotlin.backend.common.lower.optimizations.FoldConstantLowering
 import org.jetbrains.kotlin.backend.common.lower.optimizations.PropertyAccessorInlineLowering
 import org.jetbrains.kotlin.backend.common.phaser.*
+import org.jetbrains.kotlin.ir.IrElement
 import org.jetbrains.kotlin.ir.backend.js.lower.*
 import org.jetbrains.kotlin.ir.backend.js.lower.calls.CallsLowering
 import org.jetbrains.kotlin.ir.backend.js.lower.cleanup.CleanupLowering
@@ -33,35 +34,52 @@ private fun makeJsModulePhase(
     name: String,
     description: String,
     prerequisite: Set<AnyNamedPhase> = emptySet()
-) = makeIrModulePhase<JsIrBackendContext>(lowering, name, description, prerequisite, actions = setOf(validationAction, defaultDumper))
+) = makeCustomJsModulePhase(
+    op = { context, modules -> lowering(context).lower(modules) },
+    name = name,
+    description = description,
+    prerequisite = prerequisite
+)
 
 private fun makeCustomJsModulePhase(
     op: (JsIrBackendContext, IrModuleFragment) -> Unit,
     description: String,
     name: String,
     prerequisite: Set<AnyNamedPhase> = emptySet()
-) = namedIrModulePhase(
-    name,
-    description,
-    prerequisite,
-    actions = setOf(defaultDumper, validationAction),
-    nlevels = 0,
-    lower = object : SameTypeCompilerPhase<JsIrBackendContext, IrModuleFragment> {
+) = SameTypeNamedPhaseWrapper(
+    name = name,
+    description = description,
+    prerequisite = prerequisite,
+    lower = object : SameTypeCompilerPhase<JsIrBackendContext, Iterable<IrModuleFragment>> {
         override fun invoke(
             phaseConfig: PhaseConfig,
-            phaserState: PhaserState<IrModuleFragment>,
+            phaserState: PhaserState<Iterable<IrModuleFragment>>,
             context: JsIrBackendContext,
-            input: IrModuleFragment
-        ): IrModuleFragment {
-            op(context, input)
+            input: Iterable<IrModuleFragment>
+        ): Iterable<IrModuleFragment> {
+            input.forEach { module ->
+                op(context, module)
+            }
             return input
         }
-    }
+    },
+    preconditions = emptySet(),
+    postconditions = emptySet(),
+    stickyPostconditions = emptySet(),
+    actions = setOf(defaultDumper.toMultiModuleAction(), validationAction.toMultiModuleAction()),
+    nlevels = 0
 )
 
-sealed class Lowering(val name: String) {
+private fun <C> Action<IrElement, C>.toMultiModuleAction(): Action<Iterable<IrModuleFragment>, C> {
+    return { state, modules, context ->
+        modules.forEach { module ->
+            this(state, module, context)
+        }
+    }
+}
 
-    abstract val modulePhase: SameTypeNamedPhaseWrapper<JsIrBackendContext, IrModuleFragment>
+sealed class Lowering(val name: String) {
+    abstract val modulePhase: SameTypeNamedPhaseWrapper<JsIrBackendContext, Iterable<IrModuleFragment>>
 }
 
 class DeclarationLowering(
@@ -92,7 +110,7 @@ class BodyLowering(
 
 class ModuleLowering(
     name: String,
-    override val modulePhase: SameTypeNamedPhaseWrapper<JsIrBackendContext, IrModuleFragment>
+    override val modulePhase: SameTypeNamedPhaseWrapper<JsIrBackendContext, Iterable<IrModuleFragment>>
 ) : Lowering(name)
 
 private fun makeDeclarationTransformerPhase(
@@ -109,7 +127,7 @@ private fun makeBodyLoweringPhase(
     prerequisite: Set<Lowering> = emptySet()
 ) = BodyLowering(name, description, prerequisite.map { it.modulePhase }.toSet(), lowering)
 
-fun SameTypeNamedPhaseWrapper<JsIrBackendContext, IrModuleFragment>.toModuleLowering() = ModuleLowering(this.name, this)
+fun SameTypeNamedPhaseWrapper<JsIrBackendContext, Iterable<IrModuleFragment>>.toModuleLowering() = ModuleLowering(this.name, this)
 
 private val validateIrBeforeLowering = makeCustomJsModulePhase(
     { context, module -> validationCallback(context, module) },
@@ -123,7 +141,7 @@ private val validateIrAfterLowering = makeCustomJsModulePhase(
     description = "Validate IR after lowering"
 ).toModuleLowering()
 
-val scriptRemoveReceiverLowering = makeIrModulePhase(
+val scriptRemoveReceiverLowering = makeJsModulePhase(
     ::ScriptRemoveReceiverLowering,
     name = "ScriptRemoveReceiver",
     description = "Remove receivers for declarations in script"
@@ -507,7 +525,7 @@ private val bridgesConstructionPhase = makeDeclarationTransformerPhase(
     prerequisite = setOf(suspendFunctionsLoweringPhase)
 )
 
-private val singleAbstractMethodPhase = makeIrModulePhase(
+private val singleAbstractMethodPhase = makeJsModulePhase(
     ::JsSingleAbstractMethodLowering,
     name = "SingleAbstractMethod",
     description = "Replace SAM conversions with instances of interface-implementing classes"
@@ -600,12 +618,6 @@ private val callsLoweringPhase = makeBodyLoweringPhase(
     description = "Handle intrinsics"
 )
 
-private val testGenerationPhase = makeJsModulePhase(
-    ::TestGenerator,
-    name = "TestGenerationLowering",
-    description = "Generate invocations to kotlin.test suite and test functions"
-).toModuleLowering()
-
 private val staticMembersLoweringPhase = makeDeclarationTransformerPhase(
     ::StaticMembersLowering,
     name = "StaticMembersLowering",
@@ -624,6 +636,12 @@ private val objectUsageLoweringPhase = makeBodyLoweringPhase(
     description = "Transform IrGetObjectValue into instance generator call"
 )
 
+private val captureStackTraceInThrowablesPhase = makeBodyLoweringPhase(
+    ::CaptureStackTraceInThrowables,
+    name = "CaptureStackTraceInThrowables",
+    description = "Capture stack trace in Throwable constructors"
+)
+
 private val cleanupLoweringPhase = makeBodyLoweringPhase(
     { CleanupLowering() },
     name = "CleanupLowering",
@@ -633,86 +651,6 @@ private val cleanupLoweringPhase = makeBodyLoweringPhase(
 val loweringList = listOf<Lowering>(
     scriptRemoveReceiverLowering,
     validateIrBeforeLowering,
-    testGenerationPhase,
-    expectDeclarationsRemovingPhase,
-    stripTypeAliasDeclarationsPhase,
-    arrayConstructorPhase,
-    lateinitNullableFieldsPhase,
-    lateinitDeclarationLoweringPhase,
-    lateinitUsageLoweringPhase,
-    sharedVariablesLoweringPhase,
-    localClassesInInlineLambdasPhase,
-    localClassesInInlineFunctionsPhase,
-    localClassesExtractionFromInlineFunctionsPhase,
-    functionInliningPhase,
-    copyInlineFunctionBodyLoweringPhase,
-    createScriptFunctionsPhase,
-    callableReferenceLowering,
-    singleAbstractMethodPhase,
-    tailrecLoweringPhase,
-    enumClassConstructorLoweringPhase,
-    enumClassConstructorBodyLoweringPhase,
-    localDelegatedPropertiesLoweringPhase,
-    localDeclarationsLoweringPhase,
-    localClassExtractionPhase,
-    innerClassesLoweringPhase,
-    innerClassesMemberBodyLoweringPhase,
-    innerClassConstructorCallsLoweringPhase,
-    propertiesLoweringPhase,
-    primaryConstructorLoweringPhase,
-    delegateToPrimaryConstructorLoweringPhase,
-    annotationConstructorLowering,
-    initializersLoweringPhase,
-    initializersCleanupLoweringPhase,
-    kotlinNothingValueExceptionPhase,
-    // Common prefix ends
-    enumEntryInstancesLoweringPhase,
-    enumEntryInstancesBodyLoweringPhase,
-    enumClassCreateInitializerLoweringPhase,
-    enumEntryCreateGetInstancesFunsLoweringPhase,
-    enumSyntheticFunsLoweringPhase,
-    enumUsageLoweringPhase,
-    enumEntryRemovalLoweringPhase,
-    suspendFunctionsLoweringPhase,
-    propertyReferenceLoweringPhase,
-    interopCallableReferenceLoweringPhase,
-    returnableBlockLoweringPhase,
-    forLoopsLoweringPhase,
-    primitiveCompanionLoweringPhase,
-    propertyAccessorInlinerLoweringPhase,
-    foldConstantLoweringPhase,
-    privateMembersLoweringPhase,
-    privateMemberUsagesLoweringPhase,
-    defaultArgumentStubGeneratorPhase,
-    defaultArgumentPatchOverridesPhase,
-    defaultParameterInjectorPhase,
-    defaultParameterCleanerPhase,
-    jsDefaultCallbackGeneratorPhase,
-    removeInlineFunctionsWithReifiedTypeParametersLoweringPhase,
-    throwableSuccessorsLoweringPhase,
-    varargLoweringPhase,
-    multipleCatchesLoweringPhase,
-    bridgesConstructionPhase,
-    typeOperatorLoweringPhase,
-    secondaryConstructorLoweringPhase,
-    secondaryFactoryInjectorLoweringPhase,
-    classReferenceLoweringPhase,
-    inlineClassDeclarationLoweringPhase,
-    inlineClassUsageLoweringPhase,
-    autoboxingTransformerPhase,
-    blockDecomposerLoweringPhase,
-    constLoweringPhase,
-    objectDeclarationLoweringPhase,
-    objectUsageLoweringPhase,
-    callsLoweringPhase,
-    cleanupLoweringPhase,
-    validateIrAfterLowering
-)
-
-val es6LoweringList = listOf<Lowering>(
-    scriptRemoveReceiverLowering,
-    validateIrBeforeLowering,
-    testGenerationPhase,
     expectDeclarationsRemovingPhase,
     stripTypeAliasDeclarationsPhase,
     arrayConstructorPhase,
@@ -775,6 +713,7 @@ val es6LoweringList = listOf<Lowering>(
     multipleCatchesLoweringPhase,
     bridgesConstructionPhase,
     typeOperatorLoweringPhase,
+    secondaryConstructorLoweringPhase,
     secondaryFactoryInjectorLoweringPhase,
     classReferenceLoweringPhase,
     inlineClassDeclarationLoweringPhase,
@@ -784,27 +723,24 @@ val es6LoweringList = listOf<Lowering>(
     constLoweringPhase,
     objectDeclarationLoweringPhase,
     objectUsageLoweringPhase,
+    captureStackTraceInThrowablesPhase,
     callsLoweringPhase,
     cleanupLoweringPhase,
     validateIrAfterLowering
 )
 
-// TODO comment? Eliminate MouduleLowering's? Don't filter them here?
+// TODO comment? Eliminate ModuleLowering's? Don't filter them here?
 val pirLowerings = loweringList.filter { it is DeclarationLowering || it is BodyLowering } + staticMembersLoweringPhase
 
-// TODO `fold` -> `reduce`
-val jsPhases = namedIrModulePhase(
+val jsPhases = SameTypeNamedPhaseWrapper(
     name = "IrModuleLowering",
     description = "IR module lowering",
-    lower = loweringList.drop(1).fold(loweringList[0].modulePhase) { acc: CompilerPhase<JsIrBackendContext, IrModuleFragment, IrModuleFragment>, lowering ->
-        acc.then(lowering.modulePhase)
-    }
-)
-
-val jsEs6Phases = namedIrModulePhase(
-    name = "ES6IrModuleLowering",
-    description = "ES6 IR module lowering",
-    lower = es6LoweringList.drop(1).fold(es6LoweringList[0].modulePhase) { acc: CompilerPhase<JsIrBackendContext, IrModuleFragment, IrModuleFragment>, lowering ->
-        acc.then(lowering.modulePhase)
-    }
+    prerequisite = emptySet(),
+    lower = loweringList.map { it.modulePhase as CompilerPhase<JsIrBackendContext, Iterable<IrModuleFragment>, Iterable<IrModuleFragment>> }
+        .reduce { acc, lowering -> acc.then(lowering) },
+    preconditions = emptySet(),
+    postconditions = emptySet(),
+    stickyPostconditions = emptySet(),
+    actions = setOf(defaultDumper.toMultiModuleAction(), validationAction.toMultiModuleAction()),
+    nlevels = 1
 )

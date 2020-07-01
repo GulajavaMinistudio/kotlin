@@ -19,7 +19,7 @@ import java.io.DataInputStream
 import java.io.DataOutput
 
 internal object GradleBuildRootDataSerializer {
-    private val attribute = FileAttribute("kotlin-dsl-script-models", 5, false)
+    private val attribute = FileAttribute("kotlin-dsl-script-models", 7, false)
 
     fun read(buildRoot: VirtualFile): GradleBuildRootData? {
         return attribute.readAttribute(buildRoot)?.use {
@@ -46,7 +46,7 @@ internal object GradleBuildRootDataSerializer {
 internal fun writeKotlinDslScriptModels(output: DataOutput, data: GradleBuildRootData) {
     val strings = StringsPool.writer(output)
     strings.addStrings(data.projectRoots)
-    strings.addStrings(data.templateClasspath)
+    strings.addString(data.gradleHome)
     data.models.forEach {
         strings.addString(it.file)
         strings.addStrings(it.classPath)
@@ -54,8 +54,9 @@ internal fun writeKotlinDslScriptModels(output: DataOutput, data: GradleBuildRoo
         strings.addStrings(it.imports)
     }
     strings.writeHeader()
+    output.writeLong(data.importTs)
     strings.writeStringIds(data.projectRoots)
-    strings.writeStringIds(data.templateClasspath)
+    strings.writeStringId(data.gradleHome)
     output.writeList(data.models) {
         strings.writeStringId(it.file)
         output.writeString(it.inputs.sections)
@@ -69,9 +70,9 @@ internal fun writeKotlinDslScriptModels(output: DataOutput, data: GradleBuildRoo
 internal fun readKotlinDslScriptModels(input: DataInputStream, buildRoot: String): GradleBuildRootData {
     val strings = StringsPool.reader(input)
 
+    val importTs = input.readLong()
     val projectRoots = strings.readStrings()
-    val templateClasspath = strings.readStrings()
-
+    val gradleHome = strings.readString()
     val models = input.readList {
         KotlinDslScriptModel(
             strings.readString(),
@@ -83,7 +84,7 @@ internal fun readKotlinDslScriptModels(input: DataInputStream, buildRoot: String
         )
     }
 
-    return GradleBuildRootData(projectRoots, templateClasspath, models)
+    return GradleBuildRootData(importTs, projectRoots, gradleHome, models)
 }
 
 private object StringsPool {

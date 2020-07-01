@@ -8,10 +8,7 @@ package org.jetbrains.kotlin.ir.backend.js
 import org.jetbrains.kotlin.backend.common.ir.isMemberOfOpenClass
 import org.jetbrains.kotlin.ir.IrElement
 import org.jetbrains.kotlin.ir.backend.js.export.isExported
-import org.jetbrains.kotlin.ir.backend.js.utils.associatedObject
-import org.jetbrains.kotlin.ir.backend.js.utils.getJsName
-import org.jetbrains.kotlin.ir.backend.js.utils.getJsNameOrKotlinName
-import org.jetbrains.kotlin.ir.backend.js.utils.isAssociatedObjectAnnotatedAnnotation
+import org.jetbrains.kotlin.ir.backend.js.utils.*
 import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.expressions.*
 import org.jetbrains.kotlin.ir.symbols.IrClassSymbol
@@ -25,17 +22,16 @@ import org.jetbrains.kotlin.utils.addIfNotNull
 import java.util.*
 
 fun eliminateDeadDeclarations(
-    module: IrModuleFragment,
-    context: JsIrBackendContext,
-    mainFunction: IrSimpleFunction?
+    modules: Iterable<IrModuleFragment>,
+    context: JsIrBackendContext
 ) {
 
-    val allRoots = stageController.withInitialIr { buildRoots(module, context, mainFunction) }
+    val allRoots = stageController.withInitialIr { buildRoots(modules, context) }
 
     val usefulDeclarations = usefulDeclarations(allRoots, context)
 
     stageController.unrestrictDeclarationListsAccess {
-        removeUselessDeclarations(module, usefulDeclarations)
+        removeUselessDeclarations(modules, usefulDeclarations)
     }
 }
 
@@ -43,9 +39,9 @@ private fun IrField.isConstant(): Boolean {
     return correspondingPropertySymbol?.owner?.isConst ?: false
 }
 
-private fun buildRoots(module: IrModuleFragment, context: JsIrBackendContext, mainFunction: IrSimpleFunction?): Iterable<IrDeclaration> {
+private fun buildRoots(modules: Iterable<IrModuleFragment>, context: JsIrBackendContext): Iterable<IrDeclaration> {
     val rootDeclarations =
-        (module.files + context.packageLevelJsModules + context.externalPackageFragment.values).flatMapTo(mutableListOf()) { file ->
+        (modules.flatMap { it.files } + context.packageLevelJsModules + context.externalPackageFragment.values).flatMapTo(mutableListOf()) { file ->
             file.declarations.flatMap { if (it is IrProperty) listOfNotNull(it.backingField, it.getter, it.setter) else listOf(it) }
                 .filter {
                     it is IrField && it.initializer != null && it.fqNameWhenAvailable?.asString()?.startsWith("kotlin") != true
@@ -56,9 +52,9 @@ private fun buildRoots(module: IrModuleFragment, context: JsIrBackendContext, ma
                 }.filter { !(it is IrField && it.isConstant() && !it.isExported(context)) }
         }
 
-    if (context.hasTests) rootDeclarations += context.testContainer
+    rootDeclarations += context.testRoots.values
 
-    if (mainFunction != null) {
+    JsMainFunctionDetector.getMainFunctionOrNull(modules.last())?.let { mainFunction ->
         rootDeclarations += mainFunction
         if (mainFunction.isSuspend) {
             rootDeclarations += context.coroutineEmptyContinuation.owner
@@ -68,45 +64,47 @@ private fun buildRoots(module: IrModuleFragment, context: JsIrBackendContext, ma
     return rootDeclarations
 }
 
-private fun removeUselessDeclarations(module: IrModuleFragment, usefulDeclarations: Set<IrDeclaration>) {
-    module.files.forEach {
-        it.acceptVoid(object : IrElementVisitorVoid {
-            override fun visitElement(element: IrElement) {
-                element.acceptChildrenVoid(this)
-            }
-
-            override fun visitFile(declaration: IrFile) {
-                process(declaration)
-            }
-
-            private fun IrConstructorCall.shouldKeepAnnotation(): Boolean {
-                associatedObject()?.let { obj ->
-                    if (obj !in usefulDeclarations) return false
+private fun removeUselessDeclarations(modules: Iterable<IrModuleFragment>, usefulDeclarations: Set<IrDeclaration>) {
+    modules.forEach { module ->
+        module.files.forEach {
+            it.acceptVoid(object : IrElementVisitorVoid {
+                override fun visitElement(element: IrElement) {
+                    element.acceptChildrenVoid(this)
                 }
-                return true
-            }
 
-            override fun visitClass(declaration: IrClass) {
-                process(declaration)
-                // Remove annotations for `findAssociatedObject` feature, which reference objects eliminated by the DCE.
-                // Otherwise `JsClassGenerator.generateAssociatedKeyProperties` will try to reference the object factory (which is removed).
-                // That will result in an error from the Namer. It cannot generate a name for an absent declaration.
-                declaration.annotations = declaration.annotations.filter { it.shouldKeepAnnotation() }
-            }
+                override fun visitFile(declaration: IrFile) {
+                    process(declaration)
+                }
 
-            // TODO bring back the primary constructor fix
+                private fun IrConstructorCall.shouldKeepAnnotation(): Boolean {
+                    associatedObject()?.let { obj ->
+                        if (obj !in usefulDeclarations) return false
+                    }
+                    return true
+                }
 
-            private fun process(container: IrDeclarationContainer) {
-                container.declarations.transformFlat { member ->
-                    if (member !in usefulDeclarations) {
-                        emptyList()
-                    } else {
-                        member.acceptVoid(this)
-                        null
+                override fun visitClass(declaration: IrClass) {
+                    process(declaration)
+                    // Remove annotations for `findAssociatedObject` feature, which reference objects eliminated by the DCE.
+                    // Otherwise `JsClassGenerator.generateAssociatedKeyProperties` will try to reference the object factory (which is removed).
+                    // That will result in an error from the Namer. It cannot generate a name for an absent declaration.
+                    declaration.annotations = declaration.annotations.filter { it.shouldKeepAnnotation() }
+                }
+
+                // TODO bring back the primary constructor fix
+
+                private fun process(container: IrDeclarationContainer) {
+                    container.declarations.transformFlat { member ->
+                        if (member !in usefulDeclarations) {
+                            emptyList()
+                        } else {
+                            member.acceptVoid(this)
+                            null
+                        }
                     }
                 }
-            }
-        })
+            })
+        }
     }
 }
 
@@ -268,6 +266,12 @@ fun usefulDeclarations(roots: Iterable<IrDeclaration>, context: JsIrBackendConte
                     super.visitFunctionAccess(expression)
 
                     expression.symbol.owner.enqueue("function access")
+                }
+
+                override fun visitRawFunctionReference(expression: IrRawFunctionReference) {
+                    super.visitRawFunctionReference(expression)
+
+                    expression.symbol.owner.enqueue("raw function access")
                 }
 
                 override fun visitVariableAccess(expression: IrValueAccessExpression) {

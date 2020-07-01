@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2019 JetBrains s.r.o. and Kotlin Programming Language contributors.
+ * Copyright 2010-2020 JetBrains s.r.o. and Kotlin Programming Language contributors.
  * Use of this source code is governed by the Apache 2.0 license that can be found in the license/LICENSE.txt file.
  */
 
@@ -24,6 +24,7 @@ import org.jetbrains.kotlin.fir.references.impl.FirSimpleNamedReference
 import org.jetbrains.kotlin.fir.resolve.*
 import org.jetbrains.kotlin.fir.resolve.calls.ImplicitDispatchReceiverValue
 import org.jetbrains.kotlin.fir.resolve.calls.candidate
+import org.jetbrains.kotlin.fir.resolve.calls.mapArguments
 import org.jetbrains.kotlin.fir.resolve.diagnostics.*
 import org.jetbrains.kotlin.fir.resolve.transformers.InvocationKindTransformer
 import org.jetbrains.kotlin.fir.resolve.transformers.StoreReceiver
@@ -39,22 +40,14 @@ import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.types.Variance
 
-class FirExpressionsResolveTransformer(transformer: FirBodyResolveTransformer) : FirPartialBodyResolveTransformer(transformer) {
+open class FirExpressionsResolveTransformer(transformer: FirBodyResolveTransformer) : FirPartialBodyResolveTransformer(transformer) {
     private inline val builtinTypes: BuiltinTypes get() = session.builtinTypes
     private val arrayOfCallTransformer = FirArrayOfCallTransformer()
     var enableArrayOfCallTransformation = false
 
     init {
+        @Suppress("LeakingThis")
         components.callResolver.initTransformer(this)
-    }
-
-    private inline fun <T> withFirArrayOfCallTransformer(block: () -> T): T {
-        enableArrayOfCallTransformation = true
-        return try {
-            block()
-        } finally {
-            enableArrayOfCallTransformation = false
-        }
     }
 
     override fun transformExpression(expression: FirExpression, data: ResolutionMode): CompositeTransformResult<FirStatement> {
@@ -73,7 +66,7 @@ class FirExpressionsResolveTransformer(transformer: FirBodyResolveTransformer) :
         qualifiedAccessExpression: FirQualifiedAccessExpression,
         data: ResolutionMode,
     ): CompositeTransformResult<FirStatement> {
-        qualifiedAccessExpression.annotations.forEach { it.accept(this, data) }
+        qualifiedAccessExpression.transformAnnotations(this, data)
         qualifiedAccessExpression.transformTypeArguments(transformer, ResolutionMode.ContextIndependent)
 
         var result = when (val callee = qualifiedAccessExpression.calleeReference) {
@@ -147,6 +140,9 @@ class FirExpressionsResolveTransformer(transformer: FirBodyResolveTransformer) :
                 // NB: here we can get raw expression because of dropped qualifiers (see transform callee),
                 // so candidate existence must be checked before calling completion
                 if (transformedCallee is FirQualifiedAccessExpression && transformedCallee.candidate() != null) {
+                    if (!transformedCallee.isAcceptableResolvedQualifiedAccess()) {
+                        return qualifiedAccessExpression.compose()
+                    }
                     callCompleter.completeCall(transformedCallee, data.expectedType).result
                 } else {
                     transformedCallee
@@ -155,7 +151,7 @@ class FirExpressionsResolveTransformer(transformer: FirBodyResolveTransformer) :
         }
         when (result) {
             is FirQualifiedAccessExpression -> {
-                dataFlowAnalyzer.enterQualifiedAccessExpression(result)
+                dataFlowAnalyzer.enterQualifiedAccessExpression()
                 result = components.transformQualifiedAccessUsingSmartcastInfo(result)
                 dataFlowAnalyzer.exitQualifiedAccessExpression(result)
             }
@@ -164,6 +160,10 @@ class FirExpressionsResolveTransformer(transformer: FirBodyResolveTransformer) :
             }
         }
         return result.compose()
+    }
+
+    protected open fun FirQualifiedAccessExpression.isAcceptableResolvedQualifiedAccess(): Boolean {
+        return true
     }
 
     override fun transformSafeCallExpression(
@@ -199,7 +199,7 @@ class FirExpressionsResolveTransformer(transformer: FirBodyResolveTransformer) :
             storeTypeFromCallee(functionCall)
         }
         if (functionCall.calleeReference !is FirSimpleNamedReference) return functionCall.compose()
-        dataFlowAnalyzer.enterCall(functionCall)
+        dataFlowAnalyzer.enterCall()
         functionCall.annotations.forEach { it.accept(this, data) }
         functionCall.transform<FirFunctionCall, Nothing?>(InvocationKindTransformer, null)
         functionCall.transformTypeArguments(transformer, ResolutionMode.ContextIndependent)
@@ -213,12 +213,7 @@ class FirExpressionsResolveTransformer(transformer: FirBodyResolveTransformer) :
                     // name.invoke() case
                     callCompleter.completeCall(resultExplicitReceiver, noExpectedType)
                 }
-                val completionResult = callCompleter.completeCall(resultExpression, expectedTypeRef)
-
-                if (completionResult.result.typeRef is FirErrorTypeRef) {
-                    completionResult.result.argumentList.transformArguments(transformer, ResolutionMode.LambdaResolution(null))
-                }
-                completionResult
+                callCompleter.completeCall(resultExpression, expectedTypeRef)
             } catch (e: ProcessCanceledException) {
                 throw e
             } catch (e: Throwable) {
@@ -240,7 +235,6 @@ class FirExpressionsResolveTransformer(transformer: FirBodyResolveTransformer) :
         withNewLocalScope {
             transformBlockInCurrentScope(block, data)
         }
-
         return block.compose()
     }
 
@@ -313,7 +307,7 @@ class FirExpressionsResolveTransformer(transformer: FirBodyResolveTransformer) :
             val (leftArgument, rightArgument) = operatorCall.arguments
 
             fun createFunctionCall(name: Name) = buildFunctionCall {
-                source = operatorCall.source
+                source = operatorCall.source?.withKind(FirFakeSourceElementKind.DesugaredCompoundAssignment)
                 explicitReceiver = leftArgument
                 argumentList = buildUnaryArgumentList(rightArgument)
                 calleeReference = buildSimpleNamedReference {
@@ -371,7 +365,9 @@ class FirExpressionsResolveTransformer(transformer: FirBodyResolveTransformer) :
     }
 
     private fun FirTypeRef.withTypeArgumentsForBareType(argument: FirExpression): FirTypeRef {
-        val baseTypeArguments = argument.typeRef.coneTypeSafe<ConeKotlinType>()?.typeArguments
+        // TODO: Everything should also work for case of checked-type itself is a type alias
+        val baseTypeArguments =
+            argument.typeRef.coneTypeSafe<ConeKotlinType>()?.fullyExpandedType(session)?.typeArguments
         val type = coneTypeSafe<ConeKotlinType>()
         return if (type?.typeArguments?.isEmpty() != true ||
             type is ConeTypeParameterType ||
@@ -415,8 +411,8 @@ class FirExpressionsResolveTransformer(transformer: FirBodyResolveTransformer) :
             FirOperation.SAFE_AS -> {
                 resolved.resultType =
                     conversionTypeRef.withReplacedConeType(
-                        conversionTypeRef.coneTypeUnsafe<ConeKotlinType>().withNullability(
-                            ConeNullability.NULLABLE, session.inferenceContext,
+                        conversionTypeRef.coneType.withNullability(
+                            ConeNullability.NULLABLE, session.typeContext,
                         ),
                     )
             }
@@ -440,7 +436,7 @@ class FirExpressionsResolveTransformer(transformer: FirBodyResolveTransformer) :
 
         checkNotNullCall.argumentList.transformArguments(transformer, ResolutionMode.ContextDependent)
 
-        var callCompleted: Boolean = false
+        var callCompleted = false
         val result = components.syntheticCallGenerator.generateCalleeForCheckNotNullCall(checkNotNullCall)?.let {
             val completionResult = callCompleter.completeCall(it, data.expectedType)
             callCompleted = completionResult.callCompleted
@@ -495,7 +491,6 @@ class FirExpressionsResolveTransformer(transformer: FirBodyResolveTransformer) :
             // This can happen in erroneous code only
             resolvedAssignment
         }
-        // TODO: maybe replace with FirAbstractAssignment for performance?
         (result as? FirVariableAssignment)?.let { dataFlowAnalyzer.exitVariableAssignment(it) }
         return result.compose()
     }
@@ -540,18 +535,22 @@ class FirExpressionsResolveTransformer(transformer: FirBodyResolveTransformer) :
         val typeOfExpression = when (val lhs = transformedGetClassCall.argument) {
             is FirResolvedQualifier -> {
                 val symbol = lhs.symbol
-                val typeRef =
-                    symbol?.constructType(
-                        Array((symbol.phasedFir as? FirTypeParameterRefsOwner)?.typeParameters?.size ?: 0) {
+                val typeArguments: Array<ConeTypeProjection> =
+                    if (lhs.typeArguments.isNotEmpty()) {
+                        // If type arguments exist, use them to construct the type of the expression.
+                        lhs.typeArguments.map { it.toConeTypeProjection() }.toTypedArray()
+                    } else {
+                        // Otherwise, prepare the star projections as many as the size of type parameters.
+                        Array((symbol?.phasedFir as? FirTypeParameterRefsOwner)?.typeParameters?.size ?: 0) {
                             ConeStarProjection
-                        },
-                        isNullable = false,
-                    )
+                        }
+                    }
+                val typeRef = symbol?.constructType(typeArguments, isNullable = false)
                 if (typeRef != null) {
                     lhs.replaceTypeRef(buildResolvedTypeRef { type = typeRef })
                     typeRef
                 } else {
-                    lhs.resultType.coneTypeUnsafe()
+                    lhs.resultType.coneType
                 }
             }
             is FirResolvedReifiedParameterReference -> {
@@ -559,7 +558,7 @@ class FirExpressionsResolveTransformer(transformer: FirBodyResolveTransformer) :
                 symbol.constructType(emptyArray(), isNullable = false)
             }
             else -> {
-                lhs.resultType.coneTypeUnsafe<ConeKotlinType>()
+                lhs.resultType.coneType
             }
         }
 
@@ -576,12 +575,11 @@ class FirExpressionsResolveTransformer(transformer: FirBodyResolveTransformer) :
     ): CompositeTransformResult<FirStatement> {
         constExpression.annotations.forEach { it.accept(this, data) }
         fun constructLiteralType(classId: ClassId, isNullable: Boolean = false): ConeKotlinType {
-            val symbol = symbolProvider.getClassLikeSymbolByFqName(classId) ?: return ConeClassErrorType("Missing stdlib class: ${classId}")
+            val symbol = symbolProvider.getClassLikeSymbolByFqName(classId) ?: return ConeClassErrorType("Missing stdlib class: $classId")
             return symbol.toLookupTag().constructClassType(emptyArray(), isNullable)
         }
 
-        val kind = constExpression.kind
-        val type = when (kind) {
+        val type = when (val kind = constExpression.kind) {
             FirConstKind.Null -> session.builtinTypes.nullableNothingType.type
             FirConstKind.Boolean -> session.builtinTypes.booleanType.type
             FirConstKind.Char -> constructLiteralType(StandardClassIds.Char)
@@ -592,6 +590,7 @@ class FirExpressionsResolveTransformer(transformer: FirBodyResolveTransformer) :
             FirConstKind.String -> constructLiteralType(StandardClassIds.String)
             FirConstKind.Float -> constructLiteralType(StandardClassIds.Float)
             FirConstKind.Double -> constructLiteralType(StandardClassIds.Double)
+
             FirConstKind.IntegerLiteral, FirConstKind.UnsignedIntegerLiteral -> {
                 val integerLiteralType =
                     ConeIntegerLiteralTypeImpl(constExpression.value as Long, isUnsigned = kind == FirConstKind.UnsignedIntegerLiteral)
@@ -600,6 +599,7 @@ class FirExpressionsResolveTransformer(transformer: FirBodyResolveTransformer) :
                     val approximatedType = integerLiteralType.getApproximatedType(expectedType)
                     val newConstKind = approximatedType.toConstKind()
                     if (newConstKind == null) {
+                        @Suppress("UNCHECKED_CAST")
                         constExpression.replaceKind(FirConstKind.Int as FirConstKind<T>)
                         dataFlowAnalyzer.exitConstExpresion(constExpression as FirConstExpression<*>)
                         constExpression.resultType = buildErrorTypeRef {
@@ -608,6 +608,7 @@ class FirExpressionsResolveTransformer(transformer: FirBodyResolveTransformer) :
                         }
                         return constExpression.compose()
                     }
+                    @Suppress("UNCHECKED_CAST")
                     constExpression.replaceKind(newConstKind as FirConstKind<T>)
                     approximatedType
                 } else {
@@ -627,15 +628,41 @@ class FirExpressionsResolveTransformer(transformer: FirBodyResolveTransformer) :
     }
 
     override fun transformAnnotationCall(annotationCall: FirAnnotationCall, data: ResolutionMode): CompositeTransformResult<FirStatement> {
-        if (annotationCall.resolved) return annotationCall.compose()
+        if (annotationCall.resolveStatus == FirAnnotationResolveStatus.Resolved) return annotationCall.compose()
+        return resolveAnnotationCall(annotationCall, data, FirAnnotationResolveStatus.Resolved)
+    }
+
+    protected fun resolveAnnotationCall(
+        annotationCall: FirAnnotationCall,
+        data: ResolutionMode,
+        status: FirAnnotationResolveStatus
+    ): CompositeTransformResult<FirAnnotationCall> {
         dataFlowAnalyzer.enterAnnotationCall(annotationCall)
         return withFirArrayOfCallTransformer {
             (annotationCall.transformChildren(transformer, data) as FirAnnotationCall).also {
                 // TODO: it's temporary incorrect solution until we design resolve and completion for annotation calls
                 it.argumentList.transformArguments(integerLiteralTypeApproximator, null)
-                it.replaceResolved(true)
+                if (it.arguments.any { arg -> arg is FirNamedArgumentExpression }) {
+                    annotationCall.getCorrespondingConstructorReferenceOrNull(session)?.let { calleeReference ->
+                        val argumentMapping =
+                            mapArguments(it.arguments, calleeReference.resolvedSymbol.fir as FirFunction<*>)
+                                .toArgumentToParameterMapping()
+                        it.replaceArgumentList(buildResolvedArgumentList(argumentMapping))
+                    }
+                }
+                it.replaceResolveStatus(status)
                 dataFlowAnalyzer.exitAnnotationCall(it)
             }.compose()
+        }
+
+    }
+
+    private inline fun <T> withFirArrayOfCallTransformer(block: () -> T): T {
+        enableArrayOfCallTransformation = true
+        return try {
+            block()
+        } finally {
+            enableArrayOfCallTransformation = false
         }
     }
 
@@ -683,7 +710,7 @@ class FirExpressionsResolveTransformer(transformer: FirBodyResolveTransformer) :
             })
         }
 
-        dataFlowAnalyzer.enterCall(delegatedConstructorCall)
+        dataFlowAnalyzer.enterCall()
         var callCompleted = true
         var result = delegatedConstructorCall
         try {

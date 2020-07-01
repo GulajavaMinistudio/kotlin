@@ -6,7 +6,6 @@
 package org.jetbrains.kotlin.ir.backend.js.lower
 
 import org.jetbrains.kotlin.backend.common.BodyLoweringPass
-import org.jetbrains.kotlin.backend.common.CommonBackendContext
 import org.jetbrains.kotlin.backend.common.DeclarationTransformer
 import org.jetbrains.kotlin.backend.common.getOrPut
 import org.jetbrains.kotlin.backend.common.ir.copyParameterDeclarationsFrom
@@ -70,8 +69,7 @@ class EnumUsageLowering(val context: JsIrBackendContext) : BodyLoweringPass {
         return entry.run {
             IrFieldImpl(
                 startOffset, endOffset, origin, symbol, name, irClass.defaultType, Visibilities.PUBLIC,
-                isFinal = false, isExternal = true, isStatic = true,
-                isFakeOverride = entry.isFakeOverride
+                isFinal = false, isExternal = true, isStatic = true
             ).also {
                 descriptor.bind(it)
                 it.parent = irClass
@@ -528,7 +526,12 @@ class EnumSyntheticFunctionsLowering(val context: JsIrBackendContext): Declarati
     private fun List<IrExpression>.toArrayLiteral(arrayType: IrType, elementType: IrType): IrExpression {
         val irVararg = IrVarargImpl(UNDEFINED_OFFSET, UNDEFINED_OFFSET, arrayType, elementType, this)
 
-        return IrCallImpl(UNDEFINED_OFFSET, UNDEFINED_OFFSET, arrayType, context.intrinsics.arrayLiteral).apply {
+        return IrCallImpl(
+            UNDEFINED_OFFSET, UNDEFINED_OFFSET, arrayType,
+            context.intrinsics.arrayLiteral,
+            typeArgumentsCount = 0,
+            valueArgumentsCount = 1
+        ).apply {
             putValueArgument(0, irVararg)
         }
     }

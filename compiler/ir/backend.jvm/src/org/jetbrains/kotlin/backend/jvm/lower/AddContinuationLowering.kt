@@ -15,6 +15,7 @@ import org.jetbrains.kotlin.backend.jvm.JvmLoweredDeclarationOrigin
 import org.jetbrains.kotlin.backend.jvm.codegen.*
 import org.jetbrains.kotlin.backend.jvm.ir.IrInlineReferenceLocator
 import org.jetbrains.kotlin.backend.jvm.ir.defaultValue
+import org.jetbrains.kotlin.backend.jvm.ir.isStaticInlineClassReplacement
 import org.jetbrains.kotlin.backend.jvm.localDeclarationsPhase
 import org.jetbrains.kotlin.codegen.coroutines.*
 import org.jetbrains.kotlin.codegen.inline.coroutines.FOR_INLINE_SUFFIX
@@ -275,7 +276,7 @@ private class AddContinuationLowering(private val context: JvmBackendContext) : 
     // TODO: fix the generic signature -- type parameters of FunctionN should be substituted
     private fun IrClass.addInvokeCallingCreate(
         create: IrFunction,
-        invokeSuspend: IrFunction,
+        invokeSuspend: IrSimpleFunction,
         invokeToOverride: IrSimpleFunctionSymbol
     ) = addFunctionOverride(invokeToOverride.owner) { function ->
         val newlyCreatedObject = irCall(create).also { createCall ->
@@ -291,7 +292,7 @@ private class AddContinuationLowering(private val context: JvmBackendContext) : 
     // versions; for other lambdas, there's no point in generating a non-overriding `create` separately.
     private fun IrClass.addInvokeCallingConstructor(
         constructor: IrFunction,
-        invokeSuspend: IrFunction,
+        invokeSuspend: IrSimpleFunction,
         invokeToOverride: IrSimpleFunctionSymbol,
         fieldsForBound: List<IrField>,
         fieldsForUnbound: List<IrField>
@@ -333,7 +334,7 @@ private class AddContinuationLowering(private val context: JvmBackendContext) : 
         return irGet(result)
     }
 
-    private fun IrBlockBodyBuilder.callInvokeSuspend(invokeSuspend: IrFunction, lambda: IrExpression): IrExpression {
+    private fun IrBlockBodyBuilder.callInvokeSuspend(invokeSuspend: IrSimpleFunction, lambda: IrExpression): IrExpression {
         // SingletonReferencesLowering has finished a while ago, so `irUnit()` won't work anymore.
         val unitClass = context.irBuiltIns.unitClass
         val unitField = this@AddContinuationLowering.context.declarationFactory.getFieldForObjectInstance(unitClass.owner)
@@ -640,7 +641,7 @@ private fun IrFunction.suspendFunctionViewOrStub(context: JvmBackendContext): Ir
 }
 
 internal fun IrFunction.suspendFunctionOriginal(): IrFunction =
-    if (this is IrSimpleFunction && isSuspend && origin != JvmLoweredDeclarationOrigin.STATIC_INLINE_CLASS_REPLACEMENT)
+    if (this is IrSimpleFunction && isSuspend && !isStaticInlineClassReplacement)
         attributeOwnerId as IrFunction
     else this
 

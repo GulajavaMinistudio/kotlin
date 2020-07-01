@@ -94,9 +94,7 @@ tasks.withType<Test> {
     dependsOn(":kotlin-gradle-plugin:validateTaskProperties")
     dependsOn(
         ":kotlin-allopen:install",
-        ":kotlin-allopen:plugin-marker:install",
         ":kotlin-noarg:install",
-        ":kotlin-allopen:plugin-marker:install",
         ":kotlin-sam-with-receiver:install",
         ":kotlin-android-extensions:install",
         ":kotlin-build-common:install",
@@ -110,7 +108,6 @@ tasks.withType<Test> {
         ":kotlin-gradle-plugin-api:install",
         ":kotlin-gradle-plugin:install",
         ":kotlin-gradle-plugin-model:install",
-        ":kotlin-gradle-plugin:plugin-marker:install",
         ":kotlin-reflect:install",
         ":kotlin-annotation-processing-gradle:install",
         ":kotlin-test:kotlin-test-common:install",
@@ -128,8 +125,7 @@ tasks.withType<Test> {
         ":kotlin-scripting-jvm:install",
         ":kotlin-scripting-compiler-embeddable:install",
         ":kotlin-scripting-compiler-impl-embeddable:install",
-        ":kotlin-test-js-runner:install",
-        ":kotlin-source-map-loader:install"
+        ":kotlin-test-js-runner:install"
     )
 
     executable = "${rootProject.extra["JDK_18"]!!}/bin/java"
