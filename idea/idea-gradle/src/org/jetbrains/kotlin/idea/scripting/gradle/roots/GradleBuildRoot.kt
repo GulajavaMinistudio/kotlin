@@ -12,6 +12,8 @@ import org.jetbrains.kotlin.idea.core.script.ucache.ScriptClassRootsBuilder
 import org.jetbrains.kotlin.idea.scripting.gradle.GradleScriptDefinitionsContributor
 import org.jetbrains.kotlin.idea.scripting.gradle.LastModifiedFiles
 import org.jetbrains.kotlin.idea.scripting.gradle.importing.KotlinDslScriptModel
+import org.jetbrains.kotlin.idea.scripting.gradle.scriptingDebugLog
+import org.jetbrains.kotlin.idea.scripting.gradle.scriptingErrorLog
 import org.jetbrains.kotlin.scripting.definitions.ScriptDefinition
 import org.jetbrains.kotlin.scripting.resolve.VirtualFileScriptSource
 import org.jetbrains.plugins.gradle.settings.GradleProjectSettings
@@ -43,6 +45,7 @@ sealed class GradleBuildRoot(
         get() = LocalFileSystem.getInstance().findFileByPath(pathPrefix)
 
     fun saveLastModifiedFiles() {
+        scriptingDebugLog { "LasModifiedFiles saved: $lastModifiedFiles" }
         LastModifiedFiles.write(dir ?: return, lastModifiedFiles)
     }
 
@@ -88,19 +91,20 @@ class New(
  */
 class Imported(
     override val pathPrefix: String,
-    val javaHome: File?,
     val data: GradleBuildRootData,
     lastModifiedFiles: LastModifiedFiles
 ) : GradleBuildRoot(lastModifiedFiles) {
     override val projectRoots: Collection<String>
         get() = data.projectRoots
 
+    val javaHome = data.javaHome?.takeIf { it.isNotBlank() }?.let { File(it) }
+
     fun collectConfigurations(builder: ScriptClassRootsBuilder) {
         if (javaHome != null) {
             builder.sdks.addSdk(javaHome)
         }
 
-        val definitions = GradleScriptDefinitionsContributor.getDefinitions(builder.project, pathPrefix, data.gradleHome)
+        val definitions = GradleScriptDefinitionsContributor.getDefinitions(builder.project, pathPrefix, data.gradleHome, data.javaHome)
         if (definitions == null) {
             // needed to recreate classRoots if correct script definitions weren't loaded at this moment
             // in this case classRoots will be recreated after script definitions update

@@ -5,26 +5,21 @@
 
 package org.jetbrains.kotlin.idea.frontend.api.fir
 
-import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.runReadAction
 import com.intellij.openapi.editor.CaretState
 import com.intellij.openapi.util.TextRange
-import com.intellij.openapi.util.io.FileUtil
-import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiElement
-import com.intellij.psi.PsiMethod
-import com.intellij.psi.PsiParameter
-import com.intellij.testFramework.LightPlatformTestCase
-import org.intellij.plugins.relaxNG.compact.psi.util.PsiFunction
+import org.jetbrains.kotlin.idea.addExternalTestFiles
+import org.jetbrains.kotlin.idea.executeOnPooledThreadInReadAction
 import org.jetbrains.kotlin.idea.frontend.api.CallInfo
-import org.jetbrains.kotlin.idea.refactoring.fqName.getKotlinFqName
+import org.jetbrains.kotlin.idea.frontend.api.types.KtType
+import org.jetbrains.kotlin.idea.frontend.api.symbols.KtFunctionLikeSymbol
+import org.jetbrains.kotlin.idea.frontend.api.symbols.KtFunctionSymbol
+import org.jetbrains.kotlin.idea.frontend.api.symbols.KtParameterSymbol
 import org.jetbrains.kotlin.idea.test.KotlinLightCodeInsightTestCase
-import org.jetbrains.kotlin.idea.test.PluginTestCaseBase
-import org.jetbrains.kotlin.idea.util.application.runWriteAction
-import org.jetbrains.kotlin.psi.*
+import org.jetbrains.kotlin.psi.KtBinaryExpression
+import org.jetbrains.kotlin.psi.KtCallExpression
+import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.psiUtil.elementsInRange
-import org.jetbrains.kotlin.test.InTextDirectivesUtils
 import org.jetbrains.kotlin.test.KotlinTestUtils
 import java.io.File
 import kotlin.reflect.KProperty1
@@ -37,34 +32,36 @@ abstract class AbstractResolveCallTest : @Suppress("DEPRECATION") KotlinLightCod
     override fun getTestDataPath(): String = KotlinTestUtils.getHomeDirectory() + "/"
 
     protected fun doTest(path: String) {
-        File(path).getExternalFiles().forEach(::addFile)
+        addExternalTestFiles(path)
         configureByFile(path)
         val elements = editor.caretModel.caretsAndSelections.map { selection ->
             getSingleSelectedElement(selection)
         }
-        val callInfos = executeOnPooledThreadInReadAction {
-            val analysisSession = FirAnalysisSession(file as KtFile)
-            elements.map { element ->
+
+        val actualText = executeOnPooledThreadInReadAction {
+            val analysisSession = KtFirAnalysisSession(file as KtFile)
+            val callInfos = elements.map { element ->
                 when (element) {
                     is KtCallExpression -> analysisSession.resolveCall(element)
                     is KtBinaryExpression -> analysisSession.resolveCall(element)
                     else -> error("Selected should be either KtCallExpression or KtBinaryExpression but was $element")
                 }
             }
-        }
-        if (callInfos.isEmpty()) {
-            error("There are should be at least one call selected")
-        }
 
-        val textWithoutLatestComments = run {
-            val rawText = File(path).readText()
-            """(?m)^// CALL:\s.*$""".toRegex().replace(rawText, "").trimEnd()
-        }
-        val actualText = buildString {
-            append(textWithoutLatestComments)
-            append("\n\n")
-            callInfos.joinTo(this, separator = "\n") { info ->
-                "// CALL: ${info?.stringRepresentation()}"
+            if (callInfos.isEmpty()) {
+                error("There are should be at least one call selected")
+            }
+
+            val textWithoutLatestComments = run {
+                val rawText = File(path).readText()
+                """(?m)^// CALL:\s.*$""".toRegex().replace(rawText, "").trimEnd()
+            }
+            buildString {
+                append(textWithoutLatestComments)
+                append("\n\n")
+                callInfos.joinTo(this, separator = "\n") { info ->
+                    "// CALL: ${info?.stringRepresentation()}"
+                }
             }
         }
         KotlinTestUtils.assertEqualsToFile(File(path), actualText)
@@ -85,57 +82,25 @@ abstract class AbstractResolveCallTest : @Suppress("DEPRECATION") KotlinLightCod
         editor.logicalPositionToOffset(selectionStart!!),
         editor.logicalPositionToOffset(selectionEnd!!)
     )
-
-    private fun addFile(file: File) {
-        addFile(FileUtil.loadFile(file, /* convertLineSeparators = */true), file.name)
-    }
-
-    private fun addFile(text: String, fileName: String) {
-        runWriteAction {
-            val virtualDir = LightPlatformTestCase.getSourceRoot()!!
-            val virtualFile = virtualDir.createChildData(null, fileName)
-            virtualFile.getOutputStream(null)!!.writer().use { it.write(text) }
-        }
-    }
-}
-
-private fun <R> executeOnPooledThreadInReadAction(action: () -> R): R =
-    ApplicationManager.getApplication().executeOnPooledThread<R> { runReadAction(action) }.get()
-
-private fun File.getExternalFiles(): List<File> {
-    val directory = parentFile
-    val externalFileName = "${nameWithoutExtension}.external"
-    return directory.listFiles { _, name ->
-        name == "$externalFileName.kt" || name == "$externalFileName.java"
-    }!!.filterNotNull()
 }
 
 private fun CallInfo.stringRepresentation(): String {
+    fun KtType.render() = asStringForDebugging().replace('/', '.')
     fun Any.stringValue(): String? = when (this) {
-        is PsiMethod -> buildString {
-            append(getKotlinFqName()!!)
-            @Suppress("UnstableApiUsage")
-            parameters.joinTo(this, prefix = "(", postfix = ")") { parameter ->
-                "${parameter.name}: ${(parameter as PsiParameter).typeElement!!.text}"
-            }
-            append(": ${returnTypeElement!!.text}")
-        }
-        is KtFunction -> buildString {
-            append(getKotlinFqName()!!)
+        is KtFunctionLikeSymbol -> buildString {
+            append(if (this@stringValue is KtFunctionSymbol) fqName else "<constructor>")
             append("(")
-            receiverTypeReference?.let { receiver ->
-                append("<receiver> : ${receiver.text}")
+            (this@stringValue as? KtFunctionSymbol)?.receiverType?.let { receiver ->
+                append("<receiver>: ${receiver.render()}")
                 if (valueParameters.isNotEmpty()) append(", ")
             }
-            valueParameters.joinTo(this,) { parameter ->
-                "${parameter.name}: ${parameter.typeReference!!.text}"
+            valueParameters.joinTo(this) { parameter ->
+                "${parameter.name}: ${parameter.type.render()}"
             }
             append(")")
-            append(": ${typeReference?.text ?: "IMPLICIT_TYPE"}")
+            append(": ${type.render()}")
         }
-        is KtClass -> "Implicit constructor of ${getKotlinFqName()!!}"
-        is PsiClass -> "Implicit constructor of ${getKotlinFqName()!!}"
-        is KtParameter -> name!!
+        is KtParameterSymbol -> "$name: ${type.render()}"
         is Boolean -> toString()
         else -> error("unexpected parameter type ${this::class}")
     }

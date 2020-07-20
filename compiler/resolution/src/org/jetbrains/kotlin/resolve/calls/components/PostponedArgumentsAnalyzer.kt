@@ -35,7 +35,6 @@ class PostponedArgumentsAnalyzer(
         fun canBeProper(type: KotlinTypeMarker): Boolean
 
         fun hasUpperOrEqualUnitConstraint(type: KotlinTypeMarker): Boolean
-        fun hasEqualNothingConstraint(type: KotlinTypeMarker): Boolean
 
         // mutable operations
         fun addOtherSystem(otherSystem: ConstraintStorage)
@@ -59,7 +58,7 @@ class PostponedArgumentsAnalyzer(
                 )
 
             is ResolvedCallableReferenceAtom ->
-                callableReferenceResolver.processCallableReferenceArgument(c.getBuilder(), argument, diagnosticsHolder)
+                callableReferenceResolver.processCallableReferenceArgument(c.getBuilder(), argument, diagnosticsHolder, resolutionCallbacks)
 
             is ResolvedCollectionLiteralAtom -> TODO("Not supported")
 
@@ -123,7 +122,7 @@ class PostponedArgumentsAnalyzer(
             c.canBeProper(rawReturnType) -> substitute(rawReturnType)
 
             // For Unit-coercion
-            c.hasUpperOrEqualUnitConstraint(rawReturnType) && !c.hasEqualNothingConstraint(rawReturnType) -> builtIns.unitType
+            c.hasUpperOrEqualUnitConstraint(rawReturnType) -> builtIns.unitType
 
             else -> null
         }
@@ -188,7 +187,7 @@ class PostponedArgumentsAnalyzer(
 
         lambda.setAnalyzedResults(returnArgumentsInfo, subResolvedKtPrimitives)
 
-        if (inferenceSession != null) {
+        if (inferenceSession != null && lambda.atom.hasBuilderInferenceAnnotation) {
             val storageSnapshot = c.getBuilder().currentStorage()
 
             val postponedVariables = inferenceSession.inferPostponedVariables(lambda, storageSnapshot, diagnosticHolder)

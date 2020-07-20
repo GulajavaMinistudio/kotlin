@@ -9,8 +9,8 @@ import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.descriptors.Visibilities
 import org.jetbrains.kotlin.fir.declarations.builder.FirRegularClassBuilder
 import org.jetbrains.kotlin.fir.declarations.builder.FirTypeParameterBuilder
-import org.jetbrains.kotlin.fir.declarations.impl.FirRegularClassImpl
 import org.jetbrains.kotlin.fir.declarations.impl.FirFileImpl
+import org.jetbrains.kotlin.fir.declarations.impl.FirRegularClassImpl
 import org.jetbrains.kotlin.fir.symbols.impl.FirAnonymousObjectSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirClassSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
@@ -32,8 +32,6 @@ fun FirTypeParameterBuilder.addDefaultBoundIfNecessary(isFlexible: Boolean = fal
     }
 }
 
-inline val FirDeclaration.isFromLibrary: Boolean
-    get() = origin == FirDeclarationOrigin.Library
 inline val FirRegularClass.isInner get() = status.isInner
 inline val FirRegularClass.isCompanion get() = status.isCompanion
 inline val FirRegularClass.isData get() = status.isData
@@ -114,9 +112,20 @@ fun FirRegularClass.addDeclaration(declaration: FirDeclaration) {
     }
 }
 
-private object IsFromVarargKey: FirDeclarationDataKey()
+private object IsFromVarargKey : FirDeclarationDataKey()
 var FirProperty.isFromVararg: Boolean? by FirDeclarationDataRegistry.data(IsFromVarargKey)
+
+inline val FirProperty.hasJvmFieldAnnotation: Boolean
+    get() = annotations.any {
+        val classId = it.annotationTypeRef.coneTypeSafe<ConeClassLikeType>()?.classId
+        classId?.packageFqName?.asString() == "kotlin.jvm" && classId.relativeClassName.asString() == "JvmField"
+    }
 
 fun FirAnnotatedDeclaration.hasAnnotation(classId: ClassId): Boolean {
     return annotations.any { it.annotationTypeRef.coneTypeSafe<ConeClassLikeType>()?.classId == classId }
 }
+
+inline val FirDeclaration.isFromLibrary: Boolean
+    get() = origin == FirDeclarationOrigin.Library
+inline val FirDeclaration.isSynthetic: Boolean
+    get() = origin == FirDeclarationOrigin.Synthetic

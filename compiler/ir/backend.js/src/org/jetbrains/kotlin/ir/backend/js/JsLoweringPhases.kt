@@ -33,8 +33,8 @@ private fun makeJsModulePhase(
     lowering: (JsIrBackendContext) -> FileLoweringPass,
     name: String,
     description: String,
-    prerequisite: Set<AnyNamedPhase> = emptySet()
-) = makeCustomJsModulePhase(
+    prerequisite: Set<NamedCompilerPhase<JsIrBackendContext, *>> = emptySet()
+): NamedCompilerPhase<JsIrBackendContext, Iterable<IrModuleFragment>> = makeCustomJsModulePhase(
     op = { context, modules -> lowering(context).lower(modules) },
     name = name,
     description = description,
@@ -45,8 +45,8 @@ private fun makeCustomJsModulePhase(
     op: (JsIrBackendContext, IrModuleFragment) -> Unit,
     description: String,
     name: String,
-    prerequisite: Set<AnyNamedPhase> = emptySet()
-) = SameTypeNamedPhaseWrapper(
+    prerequisite: Set<NamedCompilerPhase<JsIrBackendContext, *>> = emptySet()
+): NamedCompilerPhase<JsIrBackendContext, Iterable<IrModuleFragment>> = NamedCompilerPhase(
     name = name,
     description = description,
     prerequisite = prerequisite,
@@ -63,11 +63,7 @@ private fun makeCustomJsModulePhase(
             return input
         }
     },
-    preconditions = emptySet(),
-    postconditions = emptySet(),
-    stickyPostconditions = emptySet(),
     actions = setOf(defaultDumper.toMultiModuleAction(), validationAction.toMultiModuleAction()),
-    nlevels = 0
 )
 
 private fun <C> Action<IrElement, C>.toMultiModuleAction(): Action<Iterable<IrModuleFragment>, C> {
@@ -79,13 +75,13 @@ private fun <C> Action<IrElement, C>.toMultiModuleAction(): Action<Iterable<IrMo
 }
 
 sealed class Lowering(val name: String) {
-    abstract val modulePhase: SameTypeNamedPhaseWrapper<JsIrBackendContext, Iterable<IrModuleFragment>>
+    abstract val modulePhase: NamedCompilerPhase<JsIrBackendContext, Iterable<IrModuleFragment>>
 }
 
 class DeclarationLowering(
     name: String,
     description: String,
-    prerequisite: Set<AnyNamedPhase> = emptySet(),
+    prerequisite: Set<NamedCompilerPhase<JsIrBackendContext, *>> = emptySet(),
     private val factory: (JsIrBackendContext) -> DeclarationTransformer
 ) : Lowering(name) {
     fun declarationTransformer(context: JsIrBackendContext): DeclarationTransformer {
@@ -98,7 +94,7 @@ class DeclarationLowering(
 class BodyLowering(
     name: String,
     description: String,
-    prerequisite: Set<AnyNamedPhase> = emptySet(),
+    prerequisite: Set<NamedCompilerPhase<JsIrBackendContext, *>> = emptySet(),
     private val factory: (JsIrBackendContext) -> BodyLoweringPass
 ) : Lowering(name) {
     fun bodyLowering(context: JsIrBackendContext): BodyLoweringPass {
@@ -110,7 +106,7 @@ class BodyLowering(
 
 class ModuleLowering(
     name: String,
-    override val modulePhase: SameTypeNamedPhaseWrapper<JsIrBackendContext, Iterable<IrModuleFragment>>
+    override val modulePhase: NamedCompilerPhase<JsIrBackendContext, Iterable<IrModuleFragment>>
 ) : Lowering(name)
 
 private fun makeDeclarationTransformerPhase(
@@ -127,7 +123,7 @@ private fun makeBodyLoweringPhase(
     prerequisite: Set<Lowering> = emptySet()
 ) = BodyLowering(name, description, prerequisite.map { it.modulePhase }.toSet(), lowering)
 
-fun SameTypeNamedPhaseWrapper<JsIrBackendContext, Iterable<IrModuleFragment>>.toModuleLowering() = ModuleLowering(this.name, this)
+fun NamedCompilerPhase<JsIrBackendContext, Iterable<IrModuleFragment>>.toModuleLowering() = ModuleLowering(this.name, this)
 
 private val validateIrBeforeLowering = makeCustomJsModulePhase(
     { context, module -> validationCallback(context, module) },
@@ -525,11 +521,11 @@ private val bridgesConstructionPhase = makeDeclarationTransformerPhase(
     prerequisite = setOf(suspendFunctionsLoweringPhase)
 )
 
-private val singleAbstractMethodPhase = makeJsModulePhase(
+private val singleAbstractMethodPhase = makeBodyLoweringPhase(
     ::JsSingleAbstractMethodLowering,
     name = "SingleAbstractMethod",
     description = "Replace SAM conversions with instances of interface-implementing classes"
-).toModuleLowering()
+)
 
 private val typeOperatorLoweringPhase = makeBodyLoweringPhase(
     ::TypeOperatorLowering,
@@ -732,15 +728,13 @@ val loweringList = listOf<Lowering>(
 // TODO comment? Eliminate ModuleLowering's? Don't filter them here?
 val pirLowerings = loweringList.filter { it is DeclarationLowering || it is BodyLowering } + staticMembersLoweringPhase
 
-val jsPhases = SameTypeNamedPhaseWrapper(
+val jsPhases = NamedCompilerPhase(
     name = "IrModuleLowering",
     description = "IR module lowering",
-    prerequisite = emptySet(),
-    lower = loweringList.map { it.modulePhase as CompilerPhase<JsIrBackendContext, Iterable<IrModuleFragment>, Iterable<IrModuleFragment>> }
-        .reduce { acc, lowering -> acc.then(lowering) },
-    preconditions = emptySet(),
-    postconditions = emptySet(),
-    stickyPostconditions = emptySet(),
+    lower = loweringList.map {
+        @Suppress("USELESS_CAST")
+        it.modulePhase as CompilerPhase<JsIrBackendContext, Iterable<IrModuleFragment>, Iterable<IrModuleFragment>>
+    }.reduce { acc, lowering -> acc.then(lowering) },
     actions = setOf(defaultDumper.toMultiModuleAction(), validationAction.toMultiModuleAction()),
     nlevels = 1
 )

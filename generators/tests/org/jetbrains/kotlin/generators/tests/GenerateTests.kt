@@ -45,6 +45,8 @@ import org.jetbrains.kotlin.idea.codeInsight.generate.AbstractCodeInsightActionT
 import org.jetbrains.kotlin.idea.codeInsight.generate.AbstractGenerateHashCodeAndEqualsActionTest
 import org.jetbrains.kotlin.idea.codeInsight.generate.AbstractGenerateTestSupportMethodActionTest
 import org.jetbrains.kotlin.idea.codeInsight.generate.AbstractGenerateToStringActionTest
+import org.jetbrains.kotlin.idea.codeInsight.hints.AbstractKotlinLambdasHintsProvider
+import org.jetbrains.kotlin.idea.codeInsight.hints.AbstractKotlinReferenceTypeHintsProviderTest
 import org.jetbrains.kotlin.idea.codeInsight.moveUpDown.AbstractMoveLeftRightTest
 import org.jetbrains.kotlin.idea.codeInsight.moveUpDown.AbstractMoveStatementTest
 import org.jetbrains.kotlin.idea.codeInsight.postfix.AbstractPostfixTemplateProviderTest
@@ -88,6 +90,9 @@ import org.jetbrains.kotlin.idea.fir.low.level.api.AbstractFirMultiModuleResolve
 import org.jetbrains.kotlin.idea.fir.AbstractKtDeclarationAndFirDeclarationEqualityChecker
 import org.jetbrains.kotlin.idea.folding.AbstractKotlinFoldingTest
 import org.jetbrains.kotlin.idea.frontend.api.fir.AbstractResolveCallTest
+import org.jetbrains.kotlin.idea.frontend.api.symbols.AbstractStdlibSymbolsBuildingTest
+import org.jetbrains.kotlin.idea.frontend.api.symbols.AbstractSymbolPointerTest
+import org.jetbrains.kotlin.idea.frontend.api.symbols.AbstractSymbolsByPsiBuildingTest
 import org.jetbrains.kotlin.idea.hierarchy.AbstractHierarchyTest
 import org.jetbrains.kotlin.idea.hierarchy.AbstractHierarchyWithLibTest
 import org.jetbrains.kotlin.idea.highlighter.*
@@ -266,6 +271,10 @@ fun main(args: Array<String>) {
 
             testClass<AbstractPartialBodyResolveTest> {
                 model("resolve/partialBodyResolve")
+            }
+
+            testClass<AbstractResolveModeComparisonTest> {
+                model("resolve/resolveModeComparison")
             }
 
             testClass<AbstractPsiCheckerTest> {
@@ -463,6 +472,7 @@ fun main(args: Array<String>) {
                 model("codeInsight/moveUpDown/classBodyDeclarations", pattern = KT_OR_KTS, testMethod = "doTestClassBodyDeclaration")
                 model("codeInsight/moveUpDown/closingBraces", testMethod = "doTestExpression")
                 model("codeInsight/moveUpDown/expressions", pattern = KT_OR_KTS, testMethod = "doTestExpression")
+                model("codeInsight/moveUpDown/line", testMethod = "doTestLine")
                 model("codeInsight/moveUpDown/parametersAndArguments", testMethod = "doTestExpression")
                 model("codeInsight/moveUpDown/trailingComma", testMethod = "doTestExpressionWithTrailingComma")
             }
@@ -875,6 +885,10 @@ fun main(args: Array<String>) {
                 model("codeInsight/codeVision")
             }
 
+            testClass<AbstractKotlinReferenceTypeHintsProviderTest> {
+                model("codeInsight/hints/types")
+            }
+
             testClass<AbstractScriptConfigurationHighlightingTest> {
                 model("script/definition/highlighting", extension = null, recursive = false)
                 model("script/definition/complex", extension = null, recursive = false, testMethod = "doComplexTest")
@@ -935,14 +949,26 @@ fun main(args: Array<String>) {
         }
 
         testGroup("idea/idea-frontend-fir/tests", "idea/idea-frontend-fir/testData") {
-        testClass<AbstractKtDeclarationAndFirDeclarationEqualityChecker> {
-            model("ktDeclarationAndFirDeclarationEqualityChecker")
-        }
+            testClass<AbstractKtDeclarationAndFirDeclarationEqualityChecker> {
+                model("ktDeclarationAndFirDeclarationEqualityChecker")
+            }
 
-        testClass<AbstractResolveCallTest> {
-            model("analysisSession/resolveCall")
+            testClass<AbstractResolveCallTest> {
+                model("analysisSession/resolveCall")
+            }
+
+            testClass<AbstractSymbolsByPsiBuildingTest> {
+                model("symbolsByPsi")
+            }
+
+            testClass<AbstractStdlibSymbolsBuildingTest> {
+                model("stdLibSymbols", extension = "txt")
+            }
+
+            testClass<AbstractSymbolPointerTest> {
+                model("symbolPointer", extension = "kt")
+            }
         }
-    }
 
     testGroup("idea/idea-frontend-fir/idea-fir-low-level-api/tests", "idea/testData") {
         testClass<AbstractFirMultiModuleResolveTest> {
@@ -1024,6 +1050,10 @@ fun main(args: Array<String>) {
 
             testClass<AbstractScratchLineMarkersTest> {
                 model("scratch/lineMarker", testMethod = "doScratchTest", pattern = KT_OR_KTS)
+            }
+
+            testClass<AbstractScriptTemplatesFromDependenciesTest> {
+                model("script/templatesFromDependencies", extension = null, recursive = false)
             }
         }
 

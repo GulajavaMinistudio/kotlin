@@ -73,19 +73,27 @@ fun deserializeClassToSymbol(
         isInline = Flags.IS_INLINE_CLASS.get(classProto.flags)
     }
     val isSealed = modality == Modality.SEALED
+    val annotationDeserializer = defaultAnnotationDeserializer ?: FirBuiltinAnnotationDeserializer(session)
     val context =
         parentContext?.childContext(
             classProto.typeParameterList,
             nameResolver,
             TypeTable(classProto.typeTable),
             classId.relativeClassName,
+            containerSource,
+            annotationDeserializer,
             status.isInner
         ) ?: FirDeserializationContext.createForClass(
             classId, classProto, nameResolver, session,
-            defaultAnnotationDeserializer ?: FirBuiltinAnnotationDeserializer(session),
+            annotationDeserializer,
             FirConstDeserializer(session, (containerSource as? KotlinJvmBinarySourceElement)?.binaryClass),
             containerSource
         )
+    if (status.isCompanion) {
+        parentContext?.let {
+            context.annotationDeserializer.inheritAnnotationInfo(it.annotationDeserializer)
+        }
+    }
     buildRegularClass {
         this.session = session
         origin = FirDeclarationOrigin.Library
@@ -100,7 +108,6 @@ fun deserializeClassToSymbol(
         typeParameters += context.typeDeserializer.ownTypeParameters.map { it.fir }
         if (status.isInner)
             typeParameters += parentContext?.allTypeParameters?.map { buildOuterClassTypeParameterRef { this.symbol = it } }.orEmpty()
-//        annotations += context.annotationDeserializer.loadClassAnnotations(classProto, context.nameResolver)
 
         val typeDeserializer = context.typeDeserializer
         val classDeserializer = context.memberDeserializer
@@ -114,12 +121,21 @@ fun deserializeClassToSymbol(
             buildResolvedTypeRef { type = it }
         }
 
-        addDeclarations(classProto.functionList.map(classDeserializer::loadFunction))
-        addDeclarations(classProto.propertyList.map(classDeserializer::loadProperty))
+        addDeclarations(
+            classProto.functionList.map {
+                classDeserializer.loadFunction(it, classProto)
+            }
+        )
+
+        addDeclarations(
+            classProto.propertyList.map {
+                classDeserializer.loadProperty(it, classProto)
+            }
+        )
 
         addDeclarations(
             classProto.constructorList.map {
-                classDeserializer.loadConstructor(it, this)
+                classDeserializer.loadConstructor(it, classProto, this)
             }
         )
 
@@ -156,9 +172,6 @@ fun deserializeClassToSymbol(
             generateValueOfFunction(session, classId.packageFqName, classId.relativeClassName)
         }
 
-        if (isSealed) {
-
-        }
         addCloneForArrayIfNeeded(classId)
         addSerializableIfNeeded(classId)
     }.also {
@@ -167,7 +180,8 @@ fun deserializeClassToSymbol(
                 ClassId.fromString(nameResolver.getQualifiedClassName(nameIndex))
             }
         }
-        (it.annotations as MutableList<FirAnnotationCall>) += context.annotationDeserializer.loadClassAnnotations(classProto, context.nameResolver)
+        (it.annotations as MutableList<FirAnnotationCall>) +=
+            context.annotationDeserializer.loadClassAnnotations(classProto, context.nameResolver)
     }
 }
 

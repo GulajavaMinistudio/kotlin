@@ -21,7 +21,7 @@ import org.jetbrains.kotlin.ir.expressions.IrBody
 import org.jetbrains.kotlin.ir.symbols.IrPropertySymbol
 import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
 import org.jetbrains.kotlin.ir.types.IrType
-import org.jetbrains.kotlin.ir.util.mapOptimized
+import org.jetbrains.kotlin.ir.util.transformIfNeeded
 import org.jetbrains.kotlin.ir.visitors.IrElementTransformer
 import org.jetbrains.kotlin.ir.visitors.IrElementVisitor
 import org.jetbrains.kotlin.name.Name
@@ -51,6 +51,9 @@ class Fir2IrLazySimpleFunction(
     override val isOperator: Boolean
         get() = fir.isOperator
 
+    override val isInfix: Boolean
+        get() = fir.isInfix
+
     @ObsoleteDescriptorBasedAPI
     override val descriptor: FunctionDescriptor
         get() = super.descriptor as FunctionDescriptor
@@ -72,8 +75,11 @@ class Fir2IrLazySimpleFunction(
     override val name: Name
         get() = fir.name
 
-    override val visibility: Visibility
+    override var visibility: Visibility
         get() = fir.visibility
+        set(_) {
+            error("Mutating Fir2Ir lazy elements is not possible")
+        }
 
     override val modality: Modality
         get() = fir.modality!!
@@ -132,6 +138,10 @@ class Fir2IrLazySimpleFunction(
             ?.filterIsInstance<IrSimpleFunctionSymbol>().orEmpty()
     }
 
+    override var metadata: MetadataSource?
+        get() = null
+        set(_) = error("We should never need to store metadata of external declarations.")
+
     override fun <R, D> accept(visitor: IrElementVisitor<R, D>, data: D): R {
         return visitor.visitSimpleFunction(this, data)
     }
@@ -147,11 +157,11 @@ class Fir2IrLazySimpleFunction(
     }
 
     override fun <D> transformChildren(transformer: IrElementTransformer<D>, data: D) {
-        typeParameters = typeParameters.mapOptimized { it.transform(transformer, data) }
+        typeParameters = typeParameters.transformIfNeeded(transformer, data)
 
         dispatchReceiverParameter = dispatchReceiverParameter?.transform(transformer, data)
         extensionReceiverParameter = extensionReceiverParameter?.transform(transformer, data)
-        valueParameters = valueParameters.mapOptimized { it.transform(transformer, data) }
+        valueParameters = valueParameters.transformIfNeeded(transformer, data)
 
         body = body?.transform(transformer, data)
     }

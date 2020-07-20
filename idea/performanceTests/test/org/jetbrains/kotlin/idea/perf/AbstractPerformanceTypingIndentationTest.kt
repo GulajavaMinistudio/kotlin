@@ -7,10 +7,13 @@ package org.jetbrains.kotlin.idea.perf
 
 import com.intellij.application.options.CodeStyle
 import com.intellij.openapi.actionSystem.IdeActions
+import com.intellij.openapi.application.impl.NonBlockingReadActionImpl
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.testFramework.EditorTestUtil
+import com.intellij.util.ui.UIUtil
 import org.jetbrains.kotlin.formatter.FormatSettingsUtil
-import org.jetbrains.kotlin.idea.test.KotlinLightPlatformCodeInsightTestCase
+import org.jetbrains.kotlin.idea.test.KotlinLightCodeInsightFixtureTestCase
+import org.jetbrains.kotlin.idea.testFramework.dispatchAllInvocationEvents
 import org.jetbrains.kotlin.test.KotlinTestUtils
 import java.io.File
 
@@ -18,19 +21,22 @@ import java.io.File
 /**
  * inspired by @see [org.jetbrains.kotlin.formatter.AbstractTypingIndentationTestBase]
  */
-abstract class AbstractPerformanceTypingIndentationTest : KotlinLightPlatformCodeInsightTestCase() {
+abstract class AbstractPerformanceTypingIndentationTest : KotlinLightCodeInsightFixtureTestCase() {
     companion object {
         @JvmStatic
         val stats: Stats = Stats("typing-indentation")
     }
 
-    protected fun doPerfTest(filePath: String) {
+    protected fun doPerfTest(unused: String) {
         val testName = getTestName(false)
+
+        myFixture.testDataPath = testDataPath
+        val testDataFile = testDataFile()
+        val filePath = testDataFile.path
         val testFileName = filePath.substring(0, filePath.indexOf("."))
         val testFileExtension = filePath.substring(filePath.lastIndexOf("."))
-        val originFilePath = testFileName + testFileExtension
         val afterFilePath = "$testFileName.after$testFileExtension"
-        val originalFileText = FileUtil.loadFile(File(originFilePath), true)
+        val originalFileText = FileUtil.loadFile(testDataFile, true)
 
         try {
             val configurator = FormatSettingsUtil.createConfigurator(originalFileText, CodeStyle.getSettings(project))
@@ -39,19 +45,24 @@ abstract class AbstractPerformanceTypingIndentationTest : KotlinLightPlatformCod
             performanceTest<Unit, Unit> {
                 name(testName)
                 stats(stats)
-                warmUpIterations(30)
-                iterations(50)
+                warmUpIterations(20)
+                iterations(30)
                 setUp {
-                    configureByFile(originFilePath)
+                    myFixture.configureByFile(testDataFile.name)
                 }
                 test {
-                    executeAction(IdeActions.ACTION_EDITOR_ENTER)
+                    myFixture.performEditorAction(IdeActions.ACTION_EDITOR_ENTER)
+                    dispatchAllInvocationEvents()
                 }
                 tearDown {
+
                     val actualTextWithCaret = StringBuilder(editor.document.text).insert(
                         editor.caretModel.offset,
                         EditorTestUtil.CARET_TAG
                     ).toString()
+
+                    // to avoid VFS refresh
+                    myFixture.performEditorAction(IdeActions.ACTION_UNDO)
 
                     KotlinTestUtils.assertEqualsToFile(File(afterFilePath), actualTextWithCaret)
                 }
@@ -61,5 +72,4 @@ abstract class AbstractPerformanceTypingIndentationTest : KotlinLightPlatformCod
         }
     }
 
-    override fun getTestDataPath(): String = ""
 }

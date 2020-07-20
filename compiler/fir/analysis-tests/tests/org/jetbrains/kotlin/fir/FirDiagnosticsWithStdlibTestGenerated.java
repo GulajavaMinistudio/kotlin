@@ -108,6 +108,11 @@ public class FirDiagnosticsWithStdlibTestGenerated extends AbstractFirDiagnostic
         runTest("compiler/fir/analysis-tests/testData/resolveWithStdlib/factoryFunctionOverloads.kt");
     }
 
+    @TestMetadata("fillInStackTrace.kt")
+    public void testFillInStackTrace() throws Exception {
+        runTest("compiler/fir/analysis-tests/testData/resolveWithStdlib/fillInStackTrace.kt");
+    }
+
     @TestMetadata("functionAndFunctionN.kt")
     public void testFunctionAndFunctionN() throws Exception {
         runTest("compiler/fir/analysis-tests/testData/resolveWithStdlib/functionAndFunctionN.kt");
@@ -706,6 +711,16 @@ public class FirDiagnosticsWithStdlibTestGenerated extends AbstractFirDiagnostic
         public void testFlexibleTypeInSystem() throws Exception {
             runTest("compiler/fir/analysis-tests/testData/resolveWithStdlib/inference/flexibleTypeInSystem.kt");
         }
+
+        @TestMetadata("ifElvisReturn.kt")
+        public void testIfElvisReturn() throws Exception {
+            runTest("compiler/fir/analysis-tests/testData/resolveWithStdlib/inference/ifElvisReturn.kt");
+        }
+
+        @TestMetadata("plusAssignWithLambdaInRhs.kt")
+        public void testPlusAssignWithLambdaInRhs() throws Exception {
+            runTest("compiler/fir/analysis-tests/testData/resolveWithStdlib/inference/plusAssignWithLambdaInRhs.kt");
+        }
     }
 
     @TestMetadata("compiler/fir/analysis-tests/testData/resolveWithStdlib/j+k")
@@ -858,6 +873,11 @@ public class FirDiagnosticsWithStdlibTestGenerated extends AbstractFirDiagnostic
         @TestMetadata("KotlinClassParameterGeneric.kt")
         public void testKotlinClassParameterGeneric() throws Exception {
             runTest("compiler/fir/analysis-tests/testData/resolveWithStdlib/j+k/KotlinClassParameterGeneric.kt");
+        }
+
+        @TestMetadata("kt39076.kt")
+        public void testKt39076() throws Exception {
+            runTest("compiler/fir/analysis-tests/testData/resolveWithStdlib/j+k/kt39076.kt");
         }
 
         @TestMetadata("LoggerInstance.kt")

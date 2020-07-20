@@ -16,6 +16,7 @@ import org.jetbrains.kotlin.idea.KotlinIdeaGradleBundle
 import org.jetbrains.kotlin.idea.scripting.gradle.getGradleScriptInputsStamp
 import org.jetbrains.kotlin.idea.scripting.gradle.roots.GradleBuildRootsManager
 import org.jetbrains.plugins.gradle.model.BuildScriptClasspathModel
+import org.jetbrains.plugins.gradle.service.project.DefaultProjectResolverContext
 import org.jetbrains.plugins.gradle.service.project.ProjectResolverContext
 import java.io.File
 
@@ -28,6 +29,10 @@ fun saveGradleBuildEnvironment(resolverCtx: ProjectResolverContext) {
             ?: resolverCtx.settings?.gradleHome
         synchronized(sync) {
             sync.gradleVersion = resolverCtx.projectGradleVersion
+            sync.javaHome = (resolverCtx as? DefaultProjectResolverContext)
+                ?.buildEnvironment
+                ?.java?.javaHome?.canonicalPath
+                ?.let { toSystemIndependentName(it) }
 
             if (gradleHome != null) {
                 sync.gradleHome = toSystemIndependentName(gradleHome)
@@ -58,19 +63,24 @@ fun processScriptModel(
             }
         }
 
-        if (models.containsErrors()) {
+        val errors = models.collectErrors()
+        if (errors.isNotEmpty()) {
             if (sync != null) {
                 synchronized(sync) {
                     sync.failed = true
                 }
             }
-            throw IllegalStateException(KotlinIdeaGradleBundle.message("title.kotlin.build.script"))
+            throw IllegalStateException(
+                KotlinIdeaGradleBundle.message("title.kotlin.build.script")
+                        + ":\n"
+                        + errors.joinToString("\n") { it.text + "\n" + it.details }
+            )
         }
     }
 }
 
-private fun Collection<KotlinDslScriptModel>.containsErrors(): Boolean {
-    return any { it.messages.any { it.severity == KotlinDslScriptModel.Severity.ERROR } }
+private fun Collection<KotlinDslScriptModel>.collectErrors(): List<KotlinDslScriptModel.Message> {
+    return this.flatMap { it.messages.filter { it.severity == KotlinDslScriptModel.Severity.ERROR } }
 }
 
 private fun KotlinDslScriptsModel.toListOfScriptModels(project: Project): List<KotlinDslScriptModel> =
@@ -125,9 +135,14 @@ class KotlinDslGradleBuildSync(val workingDir: String, val taskId: ExternalSyste
     var project: Project? = null
     var gradleVersion: String? = null
     var gradleHome: String? = null
+    var javaHome: String? = null
     val projectRoots = mutableSetOf<String>()
     val models = mutableListOf<KotlinDslScriptModel>()
     var failed = false
+
+    override fun toString(): String {
+        return "KotlinGradleDslSync(workingDir=$workingDir, gradleVersion=$gradleVersion, gradleHome=$gradleHome, javaHome=$javaHome, projectRoots=$projectRoots, failed=$failed)"
+    }
 }
 
 fun saveScriptModels(project: Project, build: KotlinDslGradleBuildSync) {

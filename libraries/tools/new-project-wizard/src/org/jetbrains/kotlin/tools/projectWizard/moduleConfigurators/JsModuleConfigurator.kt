@@ -10,6 +10,7 @@ import org.jetbrains.annotations.NonNls
 import org.jetbrains.kotlin.tools.projectWizard.KotlinNewProjectWizardBundle
 import org.jetbrains.kotlin.tools.projectWizard.core.Reader
 import org.jetbrains.kotlin.tools.projectWizard.core.entity.settings.ModuleConfiguratorSetting
+import org.jetbrains.kotlin.tools.projectWizard.core.entity.settings.ModuleConfiguratorSettingReference
 import org.jetbrains.kotlin.tools.projectWizard.ir.buildsystem.BuildSystemIR
 import org.jetbrains.kotlin.tools.projectWizard.ir.buildsystem.KotlinBuildSystemPluginIR
 import org.jetbrains.kotlin.tools.projectWizard.ir.buildsystem.gradle.GradleIRListBuilder
@@ -19,6 +20,7 @@ import org.jetbrains.kotlin.tools.projectWizard.plugins.kotlin.ModuleType
 import org.jetbrains.kotlin.tools.projectWizard.plugins.kotlin.ModulesToIrConversionData
 import org.jetbrains.kotlin.tools.projectWizard.settings.buildsystem.Module
 import org.jetbrains.kotlin.tools.projectWizard.settings.buildsystem.ModuleKind
+import org.jetbrains.kotlin.tools.projectWizard.templates.SimpleJsClientTemplate
 
 interface JSConfigurator : ModuleConfiguratorWithModuleType, ModuleConfiguratorWithSettings {
     override val moduleType: ModuleType get() = ModuleType.js
@@ -41,7 +43,11 @@ interface JSConfigurator : ModuleConfiguratorWithModuleType, ModuleConfiguratorW
                 if (reader.isApplication(module)) {
                     applicationCssSupport()
                 }
-                testCssSupport()
+            }
+            if (this@JSConfigurator is ModuleConfiguratorWithTests
+                && reader.settingValue(module, ModuleConfiguratorWithTests.testFramework) != KotlinTestFramework.NONE
+            ) {
+                testTask(cssSupport = reader.hasCssSupport(module))
             }
         }
     }
@@ -60,6 +66,13 @@ interface JSConfigurator : ModuleConfiguratorWithModuleType, ModuleConfiguratorW
             GenerationPhase.PROJECT_GENERATION
         ) {
             defaultValue = value(JsTargetKind.APPLICATION)
+            filter = filter@{ reference, kindCandidate ->
+                when {
+                    reference !is ModuleConfiguratorSettingReference<*, *> -> false
+                    kindCandidate == JsTargetKind.LIBRARY && reference.module?.template is SimpleJsClientTemplate -> false
+                    else -> true
+                }
+            }
         }
 
         val cssSupport by booleanSetting(
@@ -123,11 +136,13 @@ fun GradleIRListBuilder.applicationCssSupport() {
     }
 }
 
-fun GradleIRListBuilder.testCssSupport() {
+fun GradleIRListBuilder.testTask(cssSupport: Boolean) {
     "testTask" {
         "useKarma" {
             +"useChromeHeadless()"
-            +"webpackConfig.cssSupport.enabled = true"
+            if (cssSupport) {
+                +"webpackConfig.cssSupport.enabled = true"
+            }
         }
     }
 }

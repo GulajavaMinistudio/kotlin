@@ -8,15 +8,17 @@ package org.jetbrains.kotlin.idea.fir.highlighter.visitors
 import com.intellij.lang.annotation.AnnotationHolder
 import com.intellij.openapi.editor.colors.TextAttributesKey
 import org.jetbrains.kotlin.idea.frontend.api.*
-import org.jetbrains.kotlin.idea.refactoring.fqName.getKotlinFqName
+import org.jetbrains.kotlin.idea.frontend.api.symbols.KtAnonymousFunctionSymbol
+import org.jetbrains.kotlin.idea.frontend.api.symbols.KtConstructorSymbol
+import org.jetbrains.kotlin.idea.frontend.api.symbols.KtFunctionSymbol
+import org.jetbrains.kotlin.idea.frontend.api.symbols.KtSymbolKind
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
-import org.jetbrains.kotlin.psi.psiUtil.isExtensionDeclaration
 import org.jetbrains.kotlin.serialization.deserialization.KOTLIN_SUSPEND_BUILT_IN_FUNCTION_FQ_NAME
 import org.jetbrains.kotlin.idea.highlighter.KotlinHighlightingColors as Colors
 
 internal class FunctionCallHighlightingVisitor(
-    analysisSession: FrontendAnalysisSession,
+    analysisSession: KtAnalysisSession,
     holder: AnnotationHolder
 ) : FirAfterResolveHighlightingVisitor(analysisSession, holder) {
     override fun visitBinaryExpression(expression: KtBinaryExpression) {
@@ -28,7 +30,7 @@ internal class FunctionCallHighlightingVisitor(
                 analysisSession.resolveCall(expression)
                     ?.takeIf { callInfo ->
                         // ignore arithmetic-like operator calls
-                        (callInfo.targetFunction as? KtNamedFunction)?.hasModifier(KtTokens.OPERATOR_KEYWORD) != true
+                        (callInfo.targetFunction as? KtFunctionSymbol)?.isOperator != true
                     }
                     ?.let { callInfo ->
                         getTextAttributesForCal(callInfo)?.let { attributes ->
@@ -55,15 +57,16 @@ internal class FunctionCallHighlightingVisitor(
 
     private fun getTextAttributesForCal(callInfo: CallInfo): TextAttributesKey? = when {
         callInfo.isSuspendCall -> Colors.SUSPEND_FUNCTION_CALL
-        callInfo is ConstructorCallInfo ->
-            Colors.CONSTRUCTOR_CALL
-        callInfo is SimpleKtFunctionCallInfo -> when {
-            callInfo.targetFunction.getKotlinFqName() == KOTLIN_SUSPEND_BUILT_IN_FUNCTION_FQ_NAME ->Colors.KEYWORD
-            callInfo.targetFunction.isExtensionDeclaration() -> Colors.EXTENSION_FUNCTION_CALL
-            callInfo.targetFunction.parent is KtFile -> Colors.PACKAGE_FUNCTION_CALL
-            else -> Colors.FUNCTION_CALL
+        callInfo is FunctionCallInfo -> when (val function = callInfo.targetFunction) {
+            is KtConstructorSymbol -> Colors.CONSTRUCTOR_CALL
+            is KtAnonymousFunctionSymbol -> null
+            is KtFunctionSymbol -> when {
+                function.fqName == KOTLIN_SUSPEND_BUILT_IN_FUNCTION_FQ_NAME -> Colors.KEYWORD
+                function.isExtension -> Colors.EXTENSION_FUNCTION_CALL
+                function.symbolKind == KtSymbolKind.TOP_LEVEL -> Colors.PACKAGE_FUNCTION_CALL
+                else -> Colors.FUNCTION_CALL
+            }
         }
-        callInfo is SimpleJavaFunctionCallInfo -> Colors.FUNCTION_CALL
         callInfo is VariableAsFunctionCallInfo -> Colors.VARIABLE_AS_FUNCTION_CALL
         callInfo is VariableAsFunctionLikeCallInfo -> Colors.VARIABLE_AS_FUNCTION_LIKE_CALL
         else -> null

@@ -71,7 +71,8 @@ class FunctionCodegen(
 
         if (irFunction.origin != IrDeclarationOrigin.FUNCTION_FOR_DEFAULT_PARAMETER &&
             irFunction.origin != JvmLoweredDeclarationOrigin.SYNTHETIC_ACCESSOR &&
-            irFunction.origin != IrDeclarationOrigin.ENUM_CLASS_SPECIAL_MEMBER
+            irFunction.origin != IrDeclarationOrigin.ENUM_CLASS_SPECIAL_MEMBER &&
+            irFunction.origin != IrDeclarationOrigin.GENERATED_INLINE_CLASS_MEMBER
         ) {
             val skipNullabilityAnnotations = flags and Opcodes.ACC_PRIVATE != 0 || flags and Opcodes.ACC_SYNTHETIC != 0
             object : AnnotationCodegen(classCodegen, context, skipNullabilityAnnotations) {
@@ -85,9 +86,7 @@ class FunctionCodegen(
                     )
                 }
             }.genAnnotations(irFunction, signature.asmMethod.returnType, irFunction.returnType)
-            // Not generating parameter annotations for default stubs fixes KT-7892, though
-            // this certainly looks like a workaround for a javac bug.
-            if (irFunction !is IrConstructor || !irFunction.parentAsClass.shouldNotGenerateConstructorParameterAnnotations()) {
+            if (shouldGenerateAnnotationsOnValueParameters()) {
                 generateParameterAnnotations(irFunction, methodVisitor, signature, classCodegen, context, skipNullabilityAnnotations)
             }
         }
@@ -118,6 +117,18 @@ class FunctionCodegen(
         methodVisitor.visitEnd()
         return SMAPAndMethodNode(methodNode, smap)
     }
+
+    private fun shouldGenerateAnnotationsOnValueParameters(): Boolean =
+        when {
+            irFunction.origin == JvmLoweredDeclarationOrigin.SYNTHETIC_METHOD_FOR_PROPERTY_ANNOTATIONS ->
+                false
+            irFunction is IrConstructor && irFunction.parentAsClass.shouldNotGenerateConstructorParameterAnnotations() ->
+                // Not generating parameter annotations for default stubs fixes KT-7892, though
+                // this certainly looks like a workaround for a javac bug.
+                false
+            else ->
+                true
+        }
 
     // Since the only arguments to anonymous object constructors are captured variables and complex
     // super constructor arguments, there shouldn't be any annotations on them other than @NonNull,

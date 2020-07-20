@@ -10,16 +10,18 @@ import org.jetbrains.kotlin.descriptors.Visibilities
 import org.jetbrains.kotlin.descriptors.Visibility
 import org.jetbrains.kotlin.ir.IrStatement
 import org.jetbrains.kotlin.ir.UNDEFINED_OFFSET
+import org.jetbrains.kotlin.ir.builders.declarations.buildFun
+import org.jetbrains.kotlin.ir.builders.declarations.buildValueParameter
+import org.jetbrains.kotlin.ir.builders.declarations.buildVariable
 import org.jetbrains.kotlin.ir.declarations.*
-import org.jetbrains.kotlin.ir.declarations.impl.*
-import org.jetbrains.kotlin.ir.descriptors.*
+import org.jetbrains.kotlin.ir.declarations.impl.IrAnonymousInitializerImpl
+import org.jetbrains.kotlin.ir.descriptors.WrappedClassDescriptor
 import org.jetbrains.kotlin.ir.expressions.*
 import org.jetbrains.kotlin.ir.expressions.impl.*
 import org.jetbrains.kotlin.ir.symbols.*
-import org.jetbrains.kotlin.ir.symbols.impl.*
+import org.jetbrains.kotlin.ir.symbols.impl.IrAnonymousInitializerSymbolImpl
 import org.jetbrains.kotlin.ir.types.IrType
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.types.Variance
 
 object JsIrBuilder {
 
@@ -49,41 +51,13 @@ object JsIrBuilder {
 
     fun buildThrow(type: IrType, value: IrExpression) = IrThrowImpl(UNDEFINED_OFFSET, UNDEFINED_OFFSET, type, value)
 
-    fun buildValueParameter(name: String = "tmp", index: Int, type: IrType) = buildValueParameter(Name.identifier(name), index, type)
-
-    fun buildValueParameter(name: Name, index: Int, type: IrType, origin: IrDeclarationOrigin = SYNTHESIZED_DECLARATION): IrValueParameter {
-        val descriptor = WrappedValueParameterDescriptor()
-        return IrValueParameterImpl(
-            UNDEFINED_OFFSET,
-            UNDEFINED_OFFSET,
-            origin,
-            IrValueParameterSymbolImpl(descriptor),
-            name,
-            index,
-            type,
-            null,
-            isCrossinline = false,
-            isNoinline = false
-        ).also {
-            descriptor.bind(it)
+    fun buildValueParameter(parent: IrDeclarationParent, name: String, index: Int, type: IrType): IrValueParameter =
+        buildValueParameter(parent) {
+            this.origin = SYNTHESIZED_DECLARATION
+            this.name = Name.identifier(name)
+            this.index = index
+            this.type = type
         }
-    }
-
-    fun buildTypeParameter(name: Name, index: Int, isReified: Boolean, variance: Variance = Variance.INVARIANT): IrTypeParameter {
-        val descriptor = WrappedTypeParameterDescriptor()
-        return IrTypeParameterImpl(
-            UNDEFINED_OFFSET,
-            UNDEFINED_OFFSET,
-            SYNTHESIZED_DECLARATION,
-            IrTypeParameterSymbolImpl(descriptor),
-            name,
-            index,
-            isReified,
-            variance
-        ).also {
-            descriptor.bind(it)
-        }
-    }
 
     fun buildFunction(
         name: String,
@@ -125,30 +99,25 @@ object JsIrBuilder {
         isSuspend: Boolean = false,
         isExpect: Boolean = false,
         isOperator: Boolean = false,
+        isInfix: Boolean = false,
         isFakeOverride: Boolean = false,
         origin: IrDeclarationOrigin = SYNTHESIZED_DECLARATION
-    ): IrSimpleFunction {
-        val descriptor = WrappedSimpleFunctionDescriptor()
-        return IrFunctionImpl(
-            UNDEFINED_OFFSET,
-            UNDEFINED_OFFSET,
-            origin,
-            IrSimpleFunctionSymbolImpl(descriptor),
-            name,
-            visibility,
-            modality,
-            returnType,
-            isInline = isInline,
-            isExternal = isExternal,
-            isTailrec = isTailrec,
-            isSuspend = isSuspend,
-            isExpect = isExpect,
-            isFakeOverride = isFakeOverride,
-            isOperator = isOperator
-        ).also {
-            descriptor.bind(it)
-            it.parent = parent
-        }
+    ): IrSimpleFunction = buildFun {
+        this.origin = origin
+        this.name = name
+        this.visibility = visibility
+        this.modality = modality
+        this.returnType = returnType
+        this.isInline = isInline
+        this.isExternal = isExternal
+        this.isTailrec = isTailrec
+        this.isSuspend = isSuspend
+        this.isOperator = isOperator
+        this.isInfix = isInfix
+        this.isExpect = isExpect
+        this.isFakeOverride = isFakeOverride
+    }.also {
+        it.parent = parent
     }
 
     fun buildAnonymousInitializer() =
@@ -205,23 +174,18 @@ object JsIrBuilder {
         isConst: Boolean = false,
         isLateinit: Boolean = false,
         initializer: IrExpression? = null
-    ): IrVariable {
-        val descriptor = WrappedVariableDescriptor()
-        return IrVariableImpl(
-            UNDEFINED_OFFSET,
-            UNDEFINED_OFFSET,
-            SYNTHESIZED_DECLARATION,
-            IrVariableSymbolImpl(descriptor),
-            Name.identifier(name),
-            type,
-            isVar,
-            isConst,
-            isLateinit
-        ).also {
-            descriptor.bind(it)
-            it.initializer = initializer
-            if (parent != null) it.parent = parent
-        }
+    ): IrVariable = buildVariable(
+        parent,
+        UNDEFINED_OFFSET,
+        UNDEFINED_OFFSET,
+        SYNTHESIZED_DECLARATION,
+        Name.identifier(name),
+        type,
+        isVar,
+        isConst,
+        isLateinit,
+    ).also {
+        it.initializer = initializer
     }
 
     fun buildBreak(type: IrType, loop: IrLoop) = IrBreakImpl(UNDEFINED_OFFSET, UNDEFINED_OFFSET, type, loop)

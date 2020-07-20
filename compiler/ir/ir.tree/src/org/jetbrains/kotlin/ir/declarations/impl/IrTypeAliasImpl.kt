@@ -14,7 +14,7 @@ import org.jetbrains.kotlin.ir.declarations.IrTypeParameter
 import org.jetbrains.kotlin.ir.declarations.impl.carriers.TypeAliasCarrier
 import org.jetbrains.kotlin.ir.symbols.IrTypeAliasSymbol
 import org.jetbrains.kotlin.ir.types.IrType
-import org.jetbrains.kotlin.ir.util.mapOptimized
+import org.jetbrains.kotlin.ir.util.transformIfNeeded
 import org.jetbrains.kotlin.ir.visitors.IrElementTransformer
 import org.jetbrains.kotlin.ir.visitors.IrElementVisitor
 import org.jetbrains.kotlin.name.Name
@@ -24,7 +24,7 @@ class IrTypeAliasImpl(
     endOffset: Int,
     override val symbol: IrTypeAliasSymbol,
     override val name: Name,
-    override val visibility: Visibility,
+    override var visibility: Visibility,
     override val expandedType: IrType,
     override val isActual: Boolean,
     origin: IrDeclarationOrigin
@@ -59,26 +59,6 @@ class IrTypeAliasImpl(
     }
 
     override fun <D> transformChildren(transformer: IrElementTransformer<D>, data: D) {
-        typeParameters = typeParameters.mapOptimized { it.transform(transformer, data) }
-    }
-
-    companion object {
-        fun fromSymbolDescriptor(
-            startOffset: Int,
-            endOffset: Int,
-            symbol: IrTypeAliasSymbol,
-            expandedType: IrType,
-            origin: IrDeclarationOrigin,
-            descriptor: TypeAliasDescriptor
-        ) =
-            IrTypeAliasImpl(
-                startOffset, endOffset,
-                symbol,
-                descriptor.name,
-                descriptor.visibility,
-                expandedType,
-                descriptor.isActual,
-                origin
-            )
+        typeParameters = typeParameters.transformIfNeeded(transformer, data)
     }
 }

@@ -22,7 +22,6 @@ import org.jetbrains.kotlin.fir.expressions.builder.*
 import org.jetbrains.kotlin.fir.expressions.impl.FirModifiableQualifiedAccess
 import org.jetbrains.kotlin.fir.expressions.impl.FirSingleExpressionBlock
 import org.jetbrains.kotlin.fir.expressions.impl.FirStubStatement
-import org.jetbrains.kotlin.fir.expressions.impl.buildSingleExpressionBlock
 import org.jetbrains.kotlin.fir.references.FirNamedReference
 import org.jetbrains.kotlin.fir.references.builder.buildDelegateFieldReference
 import org.jetbrains.kotlin.fir.references.builder.buildImplicitThisReference
@@ -141,45 +140,12 @@ fun IElementType.toFirOperation(): FirOperation =
     }
 
 fun FirExpression.generateNotNullOrOther(
-    session: FirSession, other: FirExpression, caseId: String, baseSource: FirSourceElement?,
-): FirWhenExpression {
-    val subjectName = Name.special("<$caseId>")
-    val subjectSource = baseSource?.withKind(FirFakeSourceElementKind.WhenGeneratedSubject)
-    val subjectVariable = generateTemporaryVariable(session, subjectSource, subjectName, this)
-
-    @OptIn(FirContractViolation::class)
-    val ref = FirExpressionRef<FirWhenExpression>()
-    val subjectExpression = buildWhenSubjectExpression {
-        source = subjectSource
-        whenRef = ref
-    }
-
-    return buildWhenExpression {
+    other: FirExpression, baseSource: FirSourceElement?,
+): FirElvisExpression {
+    return buildElvisExpression {
         source = baseSource
-        this.subject = this@generateNotNullOrOther
-        this.subjectVariable = subjectVariable
-        branches += buildWhenBranch {
-            val branchSource = baseSource?.withKind(FirFakeSourceElementKind.WhenCondition)
-            source = branchSource
-            condition = buildOperatorCall {
-                source = branchSource
-                operation = FirOperation.EQ
-                argumentList = buildBinaryArgumentList(
-                    subjectExpression, buildConstExpression(branchSource, FirConstKind.Null, null)
-                )
-            }
-            result = buildSingleExpressionBlock(other)
-        }
-        branches += buildWhenBranch {
-            val otherSource = other.source?.withKind(FirFakeSourceElementKind.WhenCondition)
-            source = otherSource
-            condition = buildElseIfTrueCondition {
-                source = otherSource
-            }
-            result = buildSingleExpressionBlock(generateResolvedAccessExpression(otherSource, subjectVariable))
-        }
-    }.also {
-        ref.bind(it)
+        lhs = this@generateNotNullOrOther
+        rhs = other
     }
 }
 
@@ -204,9 +170,9 @@ fun FirExpression.generateContainsOperation(
     if (!inverted) return containsCall
 
     return buildFunctionCall {
-        source = baseSource?.withKind(FirFakeSourceElementKind.DesugaredInvertedContains)
+        source = baseSource?.fakeElement(FirFakeSourceElementKind.DesugaredInvertedContains)
         calleeReference = buildSimpleNamedReference {
-            source = operationReferenceSource?.withKind(FirFakeSourceElementKind.DesugaredInvertedContains)
+            source = operationReferenceSource?.fakeElement(FirFakeSourceElementKind.DesugaredInvertedContains)
             name = OperatorNameConventions.NOT
         }
         explicitReceiver = containsCall
@@ -225,7 +191,7 @@ fun FirExpression.generateComparisonExpression(
 
     val compareToCall = createConventionCall(
         operationReferenceSource,
-        baseSource?.withKind(FirFakeSourceElementKind.GeneratedCompararisonExpression),
+        baseSource?.fakeElement(FirFakeSourceElementKind.GeneratedCompararisonExpression),
         argument,
         OperatorNameConventions.COMPARE_TO
     )
@@ -517,6 +483,6 @@ fun FirModifiableQualifiedAccess.wrapWithSafeCall(receiver: FirExpression): FirS
             bind(checkedSafeCallSubject)
         }
         this.regularQualifiedAccess = this@wrapWithSafeCall
-        this.source = this@wrapWithSafeCall.source?.withKind(FirFakeSourceElementKind.DesugaredSafeCallExpression)
+        this.source = this@wrapWithSafeCall.source?.fakeElement(FirFakeSourceElementKind.DesugaredSafeCallExpression)
     }
 }

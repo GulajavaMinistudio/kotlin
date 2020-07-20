@@ -36,7 +36,7 @@ object FirTreeBuilder : AbstractFirTreeBuilder() {
     val typeParameter = element("TypeParameter", Declaration, typeParameterRef, annotatedDeclaration, symbolOwner)
     val typeParameterRefsOwner = element("TypeParameterRefsOwner", Declaration)
     val typeParametersOwner = element("TypeParametersOwner", Declaration, typeParameterRefsOwner)
-    val memberDeclaration = element("MemberDeclaration", Declaration, annotatedDeclaration)
+    val memberDeclaration = element("MemberDeclaration", Declaration, annotatedDeclaration, typeParameterRefsOwner)
     val callableMemberDeclaration = element("CallableMemberDeclaration", Declaration, callableDeclaration, memberDeclaration)
 
     val variable = element("Variable", Declaration, callableDeclaration, annotatedDeclaration, statement)
@@ -91,6 +91,7 @@ object FirTreeBuilder : AbstractFirTreeBuilder() {
     val qualifiedAccessWithoutCallee = element("QualifiedAccessWithoutCallee", Expression, statement)
     val qualifiedAccess = element("QualifiedAccess", Expression, qualifiedAccessWithoutCallee, resolvable)
     val checkNotNullCall = element("CheckNotNullCall", Expression, expression, call, resolvable)
+    val elvisExpression = element("ElvisExpression", Expression, expression, resolvable)
 
     val arrayOfCall = element("ArrayOfCall", Expression, expression, call)
     val arraySetCall = element("AugmentedArraySetCall", Expression, statement)

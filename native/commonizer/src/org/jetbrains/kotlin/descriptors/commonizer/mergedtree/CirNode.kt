@@ -13,7 +13,7 @@ interface CirNode<T : CirDeclaration, R : CirDeclaration> {
     val targetDeclarations: CommonizedGroup<T>
     val commonDeclaration: NullableLazyValue<R>
 
-    fun <R, T> accept(visitor: CirNodeVisitor<R, T>, data: T): R
+    fun <T, R> accept(visitor: CirNodeVisitor<T, R>, data: T): R
 
     companion object {
         inline val CirNode<*, *>.indexOfCommon: Int
@@ -24,7 +24,10 @@ interface CirNode<T : CirDeclaration, R : CirDeclaration> {
 
         fun toString(node: CirNode<*, *>) = buildString {
             if (node is CirNodeWithFqName) {
-                append("fqName=").append(node.fqName).append(", ")
+                append("fqName=").append(node.fqName.asString()).append(", ")
+            }
+            if (node is CirNodeWithClassId) {
+                append("classId=").append(node.classId.asString()).append(", ")
             }
             append("target=")
             node.targetDeclarations.joinTo(this)
